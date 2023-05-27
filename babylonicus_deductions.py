@@ -1,6 +1,7 @@
 import statistics
 from trading_tool_functions import constant_frame
 
+# Define constants for calculation.
 frame_values = constant_frame(1.32, 0.787, 1.1, 1.1494, 1.2346, 1.8786,
                               1.9453, 2.3571, 2.6149, 2.8017, 3.5327,
                               3.7396, 4.1245, 4.2817, 4.7494, 0.54325,
@@ -21,32 +22,41 @@ frame_values = constant_frame(1.32, 0.787, 1.1, 1.1494, 1.2346, 1.8786,
                               2.71828, 2.74724, 2.80777, 3.14159, 3.35989,
                               4.53236, 4.6692, 23.14609
                               )
+# Initiate Data Structures.
 gaps = []
+pnz_bigs = {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: []}
+pnz_smalls = {1: []}
 
-pnz = {
-    1: [],
-    2: [],
-    3: [],
-    4: [],
-    5: [],
-    6: [],
-    7: [],
-}
-
+# Find the average gap between the lines created by constants being
+# iterated, then find the standard deviation of these gaps.
 for i in range(1, len(frame_values)):
     gap = frame_values[i] - frame_values[i - 1]
     gaps.append(gap)
-
 average = statistics.mean(gaps)
 deviation = statistics.stdev(gaps)
 
+# Populate pnz_bigs dictionary with the relevant data
 for i in range(1, len(frame_values)):
     gap = frame_values[i] - frame_values[i - 1]
-    for j in range(7, 0, -1):
+    for j in sorted(pnz_bigs.keys(), reverse=True):
         if gap > average + (j * deviation):
-            pnz[j].append((frame_values[i - 1], frame_values[i]))
+            pnz_bigs[j].append((frame_values[i - 1], frame_values[i]))
             for k in range(j - 1, 0, -1):
-                pnz[k] = [value for value in pnz[k] if value not in pnz[j]]
+                pnz_bigs[k] = \
+                    [value for value in pnz_bigs[k] if value not in pnz_bigs[j]]
 
-# for j in range(1, 8):
-#     print(f"pnz{j}:", pnz[j])
+# Print pnz_bigs data
+# for j in sorted(pnz_bigs.keys(), reverse=True):
+#     if j in pnz_bigs:
+#         print(f"pnz_bigs{j}:", pnz_bigs[j])
+#     else:
+#         print(f"pnz_bigs{j}: []")
+
+# Populate pnz_smalls dictionary with the relevant data
+for i in range(1, len(frame_values)):
+    gap = frame_values[i] - frame_values[i - 1]
+    if gap < average - (1 * deviation):
+        pnz_smalls[1].append((frame_values[i - 1], frame_values[i]))
+
+# Print pnz_smalls data
+# print(f"pnz_smalls{1}:", pnz_smalls[1])

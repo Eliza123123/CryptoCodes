@@ -1,7 +1,6 @@
 import time
-import json
 from trading_tool_functions import *
-from babylonicus_deductions import pnz
+from babylonicus_deductions import pnz_bigs
 
 json_data_source = 'stored-data.json'
 stablecoins = ('USDT', 'USDC', 'BUSD', 'TUSD', 'GUSD', 'USDD', 'DAI', 'USDP')
@@ -37,7 +36,7 @@ def process_data():
         sum_closest_acme_3_6 = 0.0
 
         for i in range(7, 0, -1):
-            differences = [abs(scaled_price - element) for element in pnz[i]]
+            differences = [abs(scaled_price - element) for element in pnz_bigs[i]]
             closest = min(differences)
             if 3 <= i <= 6:
                 sum_closest_acme_3_6 += closest

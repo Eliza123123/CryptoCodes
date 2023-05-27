@@ -1,5 +1,4 @@
 import random
-import statistics
 import json
 import requests
 import colorama
@@ -236,3 +235,18 @@ def store_data(url: str, parameters: dict, headers: dict, filename: str) -> None
             print("Data stored successfully.")
     except Exception as e:
         print(f"Error occurred: {str(e)}")
+
+
+def through_pnz_small(bounds_list: list, candle_open: float, candle_close: float) -> bool:
+    for bounds in bounds_list:
+
+        # Tests for cross under (the open is above bounds[1] and bounds [0]),
+        # (the close is below bounds[1] and bounds [0]
+        if (candle_open > bounds[1]) and (candle_close < bounds[0]):
+            return True
+
+        # Tests for cross over (the open is below bounds[0] and bounds [1]),
+        # (the close is above bounds[0] and bounds [1]
+        elif (candle_open < bounds[0]) and (candle_close > bounds[1]):
+            return True
+    return False

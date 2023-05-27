@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime
 import websockets
 from trading_tool_functions import *
-from babylonicus_deductions import pnz
+from babylonicus_deductions import pnz_bigs, pnz_smalls
 import colorama
 from keys import api_key
 
@@ -17,6 +17,7 @@ symbols = []
 
 filename = 'market-kline.json'
 
+liquidation_size_filter = 1
 
 colorama.init()
 
@@ -41,7 +42,7 @@ async def binance_liquidations(uri):
                 m7 = "Timestamp: " + timestamp  # Add timestamp to the message
                 m5float = float(round(quantity * price, 2))
                 blocktext = '\n'.join([m1, m2, m3, m4, m5, m6, m7])
-                if m5float > 1:
+                if m5float > liquidation_size_filter:
                     print(blocktext)
                     await process_symbols(symbol)  # Pass the symbol to process_symbols function
         except Exception as e:
@@ -55,17 +56,27 @@ async def process_symbols(symbol):
         'limit': 1,
     }
     store_data(url=url, parameters=parameters, headers=headers, filename=filename)
+
     with open(filename, 'r') as file:
         data = json.load(file)
+
+        candle_open = float(data[0][1])
+        candle_close = float(data[0][4])
+
         if data:  # Check if data is not empty
-            price = float(data[0][4])
-            scaled_price = price / get_scale(price)
-            print(f"Scaled Price: {scaled_price}")
-            found_match = False  # Flag variable
+            scaled_open = candle_open / get_scale(candle_open)
+            scaled_close = candle_close / get_scale(candle_close)
+            print(f"Scaled Price: {scaled_close}")
+
+            for tup in pnz_smalls[1]:
+                if through_pnz_small([tup], scaled_open, scaled_close):
+                    colour_print(f"ACME Small: {tup}", REVERSE)
+
+            flag_pnz_big = False  # Flag variable
             for key in range(1, 8):
-                for tup in pnz[key]:
-                    if price_within([tup], scaled_price):
-                        found_match = True
+                for tup in pnz_bigs[key]:
+                    if price_within([tup], scaled_close):
+                        flag_pnz_big = True
                         if key == 6:
                             colour_print(f"ACME{key}: {tup}", MAGENTA, REVERSE)
                         elif key == 5:
@@ -75,10 +86,11 @@ async def process_symbols(symbol):
                         elif key == 3:
                             colour_print(f"ACME{key}: {tup}", YELLOW, REVERSE)
                         break
-                if found_match:
+                if flag_pnz_big:
                     break
         else:
             print("No data available in the file.")
+
     print('*' * 40)
     print()
 
