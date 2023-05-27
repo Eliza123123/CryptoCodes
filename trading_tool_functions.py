@@ -1,10 +1,10 @@
-import random
 import json
 import requests
 import colorama
 import urllib3
+from urllib3.exceptions import InsecureRequestWarning
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+urllib3.disable_warnings(InsecureRequestWarning)
 
 # Some ANSI escape sequences for colours and effects
 BLACK = '\u001b[30m'
@@ -19,13 +19,6 @@ RESET = '\u001b[0m'
 BOLD = '\u001b[1m'
 UNDERLINE = '\u001b[4m'
 REVERSE = '\u001b[7m'
-
-
-def average(lst):
-    if len(lst) == 0:
-        return 0  # Return 0 for an empty list to avoid division by zero error
-    else:
-        return sum(lst) / len(lst)
 
 
 def colour_print(text: str, *effects: str) -> None:
@@ -73,34 +66,6 @@ def constant_frame(*consts: float) -> list:
 # print(constant_frame(2.71828, 3.14159))
 
 
-def adjacent_dists(self_added_constants: list) -> list:
-    """
-    Calculates the distance between adjacent elements in the provided list.
-        Example:
-
-        >self_added_constants = [1, 4, 7, 2]
-            >distances = distance_compare(self_added_constants)
-                >print(distances)
-                    >Output: [3, 3, 5]
-
-    :param self_added_constants: The list of values.
-    :return list: A list of distances between adjacent elements.
-    """
-    distances = []
-
-    for i in range(len(self_added_constants) - 1):
-        distance = abs(self_added_constants[i] - self_added_constants[i + 1])
-        distances.append(distance)
-
-    return distances
-
-
-# Test code
-# selected_constants = constant_frame(2.71828, 3.14159)
-# print(selected_constants[1] - selected_constants[0])
-# print(adjacent_dists(selected_constants))
-
-
 def get_scale(price: float) -> float:
     """
     Determines the scale for a given price.
@@ -123,96 +88,19 @@ def get_scale(price: float) -> float:
 # print(get_scale(27000))
 
 
-def prime_sequence(n: int) -> list:
-    """
-    Generates a sequence of prime numbers up to the given number `n`.
-
-    :param n: The upper limit for generating prime numbers.
-    :return: A list of prime numbers up to `n`.
-    """
-    primes = []
-
-    for num in range(2, n + 1):
-        is_prime = True
-
-        for i in range(2, int(num ** 0.5) + 1):
-            if num % i == 0:
-                is_prime = False
-                break
-
-        if is_prime:
-            primes.append(num)
-
-    return primes
-
-
-# Test code
-# print(prime_sequence(100))
-
-
-def prime_indexed_prime_sequence(n: int) -> list:
-    """
-    Generates a sequence of prime numbers up to the given number `n`,
-    where each prime number represents the index of another prime number.
-
-    :param n: The upper limit for generating prime numbers.
-    :return: A list of prime numbers where each prime represents an index.
-    """
-    primes = prime_sequence(n)
-    indexed_primes = []
-
-    for prime in primes:
-        if prime <= len(primes):
-            indexed_primes.append(primes[prime - 1])
-
-    return indexed_primes
-
-
-# Test code
-# print(prime_indexed_prime_sequence(100))
-
-
 def price_within(bounds_list: list, price: float) -> bool:
+    """
+    Check if the given price falls within any of the bounds in the bounds_list.
+
+    :param bounds_list: A list of bounds, where each bound is
+        a tuple containing two values: lower bound and upper bound.
+    :param price: The price to check.
+    :return:bool: True if the price falls within any of the bounds, False otherwise.
+    """
     for bounds in bounds_list:
         if bounds[0] <= price <= bounds[1]:
             return True
     return False
-
-
-def pseudo_candles(n: int, max_price: int = 100) -> list:
-    """
-    Generates a list of pseudo candlestick data.
-
-    Each element in the list represents a candlestick and consists
-    of four values:
-    - open_val: The opening price of the candlestick.
-    - close_val: The closing price of the candlestick.
-    - high_val: The highest price reached during the candlestick's duration.
-    - low_val: The lowest price reached during the candlestick's duration.
-
-    :param n: The number of candlesticks to generate.
-    :param max_price: The maximum price value to use for generating the
-        candlestick data. Defaults to 100.
-    :return: A list of pseudo candlestick data.
-    """
-    candlestick_data = []
-    close_val = 0
-
-    for candle_count in range(0, n):
-        if candle_count == 0:
-            close_val = round(random.uniform(1, max_price), 2)
-
-        else:
-            open_val = close_val
-            close_val = round(random.uniform(1, max_price), 2)
-            high_val = \
-                round(random.uniform(max(open_val, close_val), max_price), 2)
-            low_val = \
-                round(random.uniform(1, min(open_val, close_val)), 2)
-            candle = (open_val, close_val, high_val, low_val)
-            candlestick_data.append(candle)
-
-    return candlestick_data
 
 
 def store_data(url: str, parameters: dict, headers: dict, filename: str) -> None:
@@ -232,19 +120,25 @@ def store_data(url: str, parameters: dict, headers: dict, filename: str) -> None
 
         with open(filename, "w") as stored_data:
             json.dump(data, stored_data, indent=4)
-            print("Data stored successfully.")
     except Exception as e:
         print(f"Error occurred: {str(e)}")
 
 
 def through_pnz_small(bounds_list: list, candle_open: float, candle_close: float) -> bool:
-    for bounds in bounds_list:
+    """
+    Check if the candle has crossed through any of the bounds in the bounds_list.
 
+    :param bounds_list: A list of bounds, where each bound is a tuple
+        containing two values: lower bound and upper bound.
+    :param candle_open: The opening price of the candle.
+    :param candle_close: The closing price of the candle.
+    :return bool: True if the candle has crossed through any of the bounds, False otherwise.
+    """
+    for bounds in bounds_list:
         # Tests for cross under (the open is above bounds[1] and bounds [0]),
         # (the close is below bounds[1] and bounds [0]
         if (candle_open > bounds[1]) and (candle_close < bounds[0]):
             return True
-
         # Tests for cross over (the open is below bounds[0] and bounds [1]),
         # (the close is above bounds[0] and bounds [1]
         elif (candle_open < bounds[0]) and (candle_close > bounds[1]):

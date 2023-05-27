@@ -1,0 +1,342 @@
+## Make a fplt of the babylonicus model
+# import finplot as fplt
+# line = pnz[1]
+#
+# fplt.create_plot(title="Babylonicus Model")
+# for line in frame_values:
+#     fplt.add_line((0, line), (100, line), color='blue')
+# for line in pnz[1]:
+#     fplt.add_line((0, line), (100, line), color='red')
+# for line in pnz[2]:
+#     fplt.add_line((0, line), (100, line), color='orange')
+# for line in pnz[3]:
+#     fplt.add_line((0, line), (100, line), color='yellow')
+# for line in pnz[4]:
+#     fplt.add_line((0, line), (100, line), color='cyan')
+# for line in pnz[5]:
+#     fplt.add_line((0, line), (100, line), color='green')
+# for line in pnz[6]:
+#     fplt.add_line((0, line), (100, line), color='pink')
+# fplt.set_y_range(ymin=0, ymax=100)
+# fplt.show()
+
+
+
+
+import requests
+from trading_tool_functions import store_data
+from datetime import datetime
+
+
+url = 'https://fapi.binance.com/fapi/v1/klines'
+api_key = 'd4g8tK4spj6opzAlAwJCqS81449pRDqtNEQZE24lB2xYfWvT089GuZS6LfmEGG7U'
+secret_key = 'bJLJVdKvAERrtBEJ19SVCdR18kXzuVeyt4fD27lGnkJPbVigrKq8sVCNmlfHLbPB'
+
+headers = {
+    'X-MBX-APIKEY': api_key
+}
+
+filename = 'btc-kline.json'
+
+parameters = {
+    'symbol': 'BTCUSDT',
+    'interval': '1m',
+    'limit': 1,
+}
+
+updates = 0
+
+while True:
+    if datetime.now().second == updates:
+        response = requests.get(url, headers=headers, params=parameters, verify=False)
+        print(response.json())
+        store_data(url=url, parameters=parameters, headers=headers, filename=filename)
+
+
+
+
+from trading_tool_functions import *
+import finplot as fplt
+import pandas as pd
+
+# Global variables
+no_candles = 50
+scale_max = 100
+
+candlestick_data = pseudo_candles(no_candles, max_price=scale_max)
+
+ohlc_data = [(i+1, d[0], d[1], d[2], d[3])
+             for i, d in enumerate(candlestick_data)]
+
+df = pd.DataFrame(ohlc_data, columns=['Index',
+                                      'Open',
+                                      'Close',
+                                      'High',
+                                      'Low']
+                  )
+
+# for element in dir(finplot):
+#     print(element)
+
+print(df)
+
+# Plot the candlestick chart
+fplt.candlestick_ochl(df[['Index', 'Open', 'Close', 'High', 'Low']])
+
+for prime in prime_sequence(scale_max):
+    fplt.add_line((0, prime), (no_candles, prime), color='blue')
+
+for prime in prime_indexed_prime_sequence(scale_max):
+    fplt.add_line((0, prime), (no_candles, prime), color='red')
+fplt.show()
+
+
+
+from trading_tool_functions import *
+import finplot as fplt
+import yfinance
+
+no_candles = 20
+df = yfinance.download('AAPL')
+fplt.candlestick_ochl(df[['Open', 'Close', 'High', 'Low']])
+for prime in prime_sequence(1000):
+    fplt.add_line((0, prime), (no_candles, prime), color='blue')
+fplt.show()
+
+
+
+import json
+
+json_data_source = 'stored-data.json'
+stablecoins = ('USDT', 'USDC', 'BUSD', 'TUSD', 'GUSD', 'USDD', 'DAI', 'USDP')
+
+with open(json_data_source, encoding='utf-8') as data:
+    load_json = json.load(data)
+
+target_data = {}
+for item in load_json['data']:
+    if item['symbol'] not in stablecoins:
+        symbol = item['symbol']
+        price = item['quote']['USD']['price']
+        market_cap = item['quote']['USD']['market_cap']
+        target_data[symbol] = [price, market_cap]
+
+
+
+
+import json
+import requests
+import time
+
+url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest'
+parameters = {
+    'start': '1',
+    'convert': 'USD',
+}
+headers = {
+    'Accepts': 'application/json',
+    'X-CMC_PRO_API_KEY': '01838615-14d0-4655-8c4c-5d59e2d4cdbe',
+}
+filename = 'stored-data.json'
+
+
+def store_data():
+    try:
+        response = requests.get(url, params=parameters, headers=headers, verify=False)
+        data = json.loads(response.text)
+
+        with open(filename, "w") as stored_data:
+            json.dump(data, stored_data, indent=4)
+            print("Data stored successfully.")
+    except Exception as e:
+        print(f"Error occurred: {str(e)}")
+
+
+# Run the initial store_data call
+store_data()
+
+
+while True:
+    # Wait for 5 minutes
+    time.sleep(300)
+    # Call store_data every 5 minutes
+    store_data()
+
+
+
+import time
+from trading_tool_functions import *
+from acme_calculations import pnz_bigs
+
+json_data_source = 'stored-data.json'
+stablecoins = ('USDT', 'USDC', 'BUSD', 'TUSD', 'GUSD', 'USDD', 'DAI', 'USDP')
+
+
+def read_target_data():
+    with open(json_data_source, encoding='utf-8') as data:
+        load_json = json.load(data)
+
+    target_data = {}
+    for item in load_json['data']:
+        if item['symbol'] not in stablecoins:
+            symbol = item['symbol']
+            price = item['quote']['USD']['price']
+            market_cap = item['quote']['USD']['market_cap']
+            target_data[symbol] = [price, market_cap]
+
+    return target_data
+
+
+def process_data():
+    # Read target_data
+    target_data = read_target_data()
+    market_scores = []
+    total_sum_closest_acme_3_6 = 0.0
+
+    for symbol, data in target_data.items():
+        price = data[0]
+        market_cap = data[1]
+        scaled_price = price / get_scale(price)
+        target_data[symbol] = [scaled_price, market_cap]
+
+        sum_closest_acme_3_6 = 0.0
+
+        for i in range(7, 0, -1):
+            differences = [abs(scaled_price - element) for element in pnz_bigs[i]]
+            closest = min(differences)
+            if 3 <= i <= 6:
+                sum_closest_acme_3_6 += closest
+
+        total_sum_closest_acme_3_6 += sum_closest_acme_3_6
+
+    print(total_sum_closest_acme_3_6)
+
+
+while True:
+    process_data()
+    # Wait for 5 minutes
+    time.sleep(300)
+
+
+
+def average(lst):
+    if len(lst) == 0:
+        return 0  # Return 0 for an empty list to avoid division by zero error
+    else:
+        return sum(lst) / len(lst)
+
+
+
+def adjacent_dists(self_added_constants: list) -> list:
+    """
+    Calculates the distance between adjacent elements in the provided list.
+        Example:
+
+        >self_added_constants = [1, 4, 7, 2]
+            >distances = distance_compare(self_added_constants)
+                >print(distances)
+                    >Output: [3, 3, 5]
+
+    :param self_added_constants: The list of values.
+    :return list: A list of distances between adjacent elements.
+    """
+    distances = []
+
+    for i in range(len(self_added_constants) - 1):
+        distance = abs(self_added_constants[i] - self_added_constants[i + 1])
+        distances.append(distance)
+
+    return distances
+
+
+# Test code
+# selected_constants = constant_frame(2.71828, 3.14159)
+# print(selected_constants[1] - selected_constants[0])
+# print(adjacent_dists(selected_constants))
+
+
+
+def prime_sequence(n: int) -> list:
+    """
+    Generates a sequence of prime numbers up to the given number `n`.
+
+    :param n: The upper limit for generating prime numbers.
+    :return: A list of prime numbers up to `n`.
+    """
+    primes = []
+
+    for num in range(2, n + 1):
+        is_prime = True
+
+        for i in range(2, int(num ** 0.5) + 1):
+            if num % i == 0:
+                is_prime = False
+                break
+
+        if is_prime:
+            primes.append(num)
+
+    return primes
+
+
+# Test code
+# print(prime_sequence(100))
+
+
+def prime_indexed_prime_sequence(n: int) -> list:
+    """
+    Generates a sequence of prime numbers up to the given number `n`,
+    where each prime number represents the index of another prime number.
+
+    :param n: The upper limit for generating prime numbers.
+    :return: A list of prime numbers where each prime represents an index.
+    """
+    primes = prime_sequence(n)
+    indexed_primes = []
+
+    for prime in primes:
+        if prime <= len(primes):
+            indexed_primes.append(primes[prime - 1])
+
+    return indexed_primes
+
+
+# Test code
+# print(prime_indexed_prime_sequence(100))
+
+
+
+def pseudo_candles(n: int, max_price: int = 100) -> list:
+    """
+    Generates a list of pseudo candlestick data.
+
+    Each element in the list represents a candlestick and consists
+    of four values:
+    - open_val: The opening price of the candlestick.
+    - close_val: The closing price of the candlestick.
+    - high_val: The highest price reached during the candlestick's duration.
+    - low_val: The lowest price reached during the candlestick's duration.
+
+    :param n: The number of candlesticks to generate.
+    :param max_price: The maximum price value to use for generating the
+        candlestick data. Defaults to 100.
+    :return: A list of pseudo candlestick data.
+    """
+    candlestick_data = []
+    close_val = 0
+
+    for candle_count in range(0, n):
+        if candle_count == 0:
+            close_val = round(random.uniform(1, max_price), 2)
+
+        else:
+            open_val = close_val
+            close_val = round(random.uniform(1, max_price), 2)
+            high_val = \
+                round(random.uniform(max(open_val, close_val), max_price), 2)
+            low_val = \
+                round(random.uniform(1, min(open_val, close_val)), 2)
+            candle = (open_val, close_val, high_val, low_val)
+            candlestick_data.append(candle)
+
+    return candlestick_data

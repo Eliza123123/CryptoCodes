@@ -45,18 +45,18 @@ for i in range(1, len(frame_values)):
                 pnz_bigs[k] = \
                     [value for value in pnz_bigs[k] if value not in pnz_bigs[j]]
 
+# Populate pnz_smalls dictionary with the relevant data
+for i in range(1, len(frame_values)):
+    gap = frame_values[i] - frame_values[i - 1]
+    if gap < average - (1 * deviation):
+        pnz_smalls[1].append((frame_values[i - 1], frame_values[i]))
+
 # Print pnz_bigs data
 # for j in sorted(pnz_bigs.keys(), reverse=True):
 #     if j in pnz_bigs:
 #         print(f"pnz_bigs{j}:", pnz_bigs[j])
 #     else:
 #         print(f"pnz_bigs{j}: []")
-
-# Populate pnz_smalls dictionary with the relevant data
-for i in range(1, len(frame_values)):
-    gap = frame_values[i] - frame_values[i - 1]
-    if gap < average - (1 * deviation):
-        pnz_smalls[1].append((frame_values[i - 1], frame_values[i]))
 
 # Print pnz_smalls data
 # print(f"pnz_smalls{1}:", pnz_smalls[1])
