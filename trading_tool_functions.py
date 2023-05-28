@@ -66,6 +66,20 @@ def constant_frame(*consts: float) -> list:
 # print(constant_frame(2.71828, 3.14159))
 
 
+async def fetch_data(url: str, parameters: dict, headers: dict) -> dict:
+    """
+    Fetch data from the url with given parameters and headers.
+    Return the JSON response as a dictionary.
+
+    :param url: The URL to send the request to.
+    :param parameters: The parameters for the request.
+    :param headers: The headers for the request.
+    :return: The JSON response from the request.
+    """
+    response = requests.get(url, params=parameters, headers=headers)
+    return response.json()
+
+
 def get_scale(price: float) -> float:
     """
     Determines the scale for a given price.
