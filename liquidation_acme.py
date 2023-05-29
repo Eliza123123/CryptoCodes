@@ -1,6 +1,6 @@
 from trading_tool_functions import json, get_scale, \
     through_pnz_small, colour_print, REVERSE, price_within, MAGENTA, \
-    GREEN, CYAN, YELLOW, fetch_data
+    GREEN, CYAN, YELLOW, BLUE, BLACK, fetch_data
 from acme_calculations import pnz_bigs, pnz_smalls
 from keys import api_key
 from datetime import datetime
@@ -121,6 +121,7 @@ async def process_symbols(symbol: str, liquidation_message: str) -> None:
     This is a coroutine function and should be used with await or inside another coroutine function.
 
     :param symbol: The trading symbol to be processed.
+
     :param liquidation_message: The message associated with a liquidation event for the symbol.
     """
     parameters = {
@@ -143,8 +144,9 @@ async def process_symbols(symbol: str, liquidation_message: str) -> None:
             if through_pnz_small([tup], scaled_open, scaled_close):
                 colour_print(f"ACME Small: {tup}", REVERSE)
 
-        flag_pnz_big = False  # Flag variable
-        for key in range(1, 8):
+        flag_pnz_big = False  # Flag variable for indicating whether the price is within an ACME zone
+        flag_not_in_zone = False  # Flag variable for indicating whether the price is not within any ACME zone
+        for key in range(1, 6):
             for tup in pnz_bigs[key]:
                 if price_within([tup], scaled_close):
                     flag_pnz_big = True
@@ -156,9 +158,17 @@ async def process_symbols(symbol: str, liquidation_message: str) -> None:
                         colour_print(f"ACME Big {key}: {tup}", CYAN, REVERSE)
                     elif key == 3:
                         colour_print(f"ACME Big {key}: {tup}", YELLOW, REVERSE)
+                    elif key == 2:
+                        colour_print(f"ACME Big {key}: {tup}", BLUE, REVERSE)
+                    elif key == 1:
+                        colour_print(f"ACME Big {key}: {tup}", BLACK, REVERSE)
                     break
-            if flag_pnz_big:
+                else:
+                    flag_not_in_zone = True  # Raise the flag when the price is not within the current ACME zone
+            if flag_pnz_big or flag_not_in_zone:
                 break
+        if flag_not_in_zone and not flag_pnz_big:
+            print("Not in ACME zone")
     else:
         print("No data available in the response.")
 
