@@ -11,7 +11,6 @@ import colorama
 import queue
 import asyncio
 
-liquidation_size_filter = 1
 symbols = []
 
 websocket_uri = "wss://fstream.binance.com/ws/!forceOrder@arr"
@@ -55,7 +54,7 @@ async def binance_liquidations(uri: str) -> None:
             break
 
 
-async def process_messages() -> None:
+async def process_messages(liquidation_size_filter: int) -> None:
     """
      Continuously processes messages from a global queue.
 
@@ -76,6 +75,8 @@ async def process_messages() -> None:
      lead to high CPU usage (a condition known as 'CPU spin').
 
      This is a coroutine function and must be used with await or inside another coroutine function.
+
+     :param liquidation_size_filter: Any liquidation values under this level will not be passed to process_symbols
     """
     while True:
         if not messages.empty():
@@ -84,13 +85,13 @@ async def process_messages() -> None:
             quantity = float(msg["q"])
             price = float(msg["p"])
 
-            m1 = '*' * 40
+            m1 = '*' * 50
             m2 = "Symbol: " + symbol
             m3 = "Side: " + "Buyer Liquidated" \
                 if msg["S"] == "SELL" else "Seller Liquidated"
             m4 = "Quantity: " + msg["q"]
             m5 = "Price: " + msg["p"]
-            m6 = "USD Value: $" + str(round(quantity * price, 2))
+            m6 = "Liquidation Value: $" + str(round(quantity * price, 2))
             m7 = "Timestamp: " + datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
             blocktext = '\n'.join([m1, m2, m3, m4, m5, m6, m7])
@@ -102,7 +103,7 @@ async def process_messages() -> None:
             await asyncio.sleep(0.01)  # prevent CPU spin when the queue is empty
 
 
-async def process_symbols(symbol: str, liquidation_message: str) -> None:
+async def process_symbols(symbol: str, liquidation_message: str) -> list:
     """
     Processes the given symbol and performs various calculations and checks related to liquidations.
 
@@ -130,47 +131,49 @@ async def process_symbols(symbol: str, liquidation_message: str) -> None:
         'limit': 1,
     }
     data = await fetch_data(url=url, parameters=parameters, headers=headers)
+    this_message = []  # initialize list for storing messages
 
     if data:  # Check if data is not empty
         candle_open = float(data[0][1])
         candle_close = float(data[0][4])
-        scaled_open = candle_open / get_scale(candle_open)
-        scaled_close = candle_close / get_scale(candle_close)
+        scale_factor = get_scale(min(candle_open, candle_close))  # or get_scale(max(candle_open, candle_close))
+        scaled_open = candle_open / scale_factor
+        scaled_close = candle_close / scale_factor
 
-        print(liquidation_message)
-        print(f"Scaled Price: {scaled_close}")
+        color_map = {6: (MAGENTA, REVERSE), 5: (GREEN, REVERSE), 4: (CYAN, REVERSE),
+                     3: (YELLOW, REVERSE), 2: (BLUE, REVERSE), 1: (BLACK, REVERSE)}
 
+        this_message.append(liquidation_message)
+        this_message.append(f"Scaled Price: {scaled_close}")
+
+        flag_pnz_small = False
+
+        seen_tups = set()
         for tup in pnz_smalls[1]:
-            if through_pnz_small([tup], scaled_open, scaled_close):
-                colour_print(f"ACME Small: {tup}", REVERSE)
+            if tup not in seen_tups and through_pnz_small([tup], scaled_open, scaled_close):
+                seen_tups.add(tup)
+                flag_pnz_small = True
+                this_message.append(colour_print(f"ACME Small: {tup}", REVERSE, return_message=True))
 
-        flag_pnz_big = False  # Flag variable for indicating whether the price is within an ACME zone
-        flag_not_in_zone = False  # Flag variable for indicating whether the price is not within any ACME zone
+        flag_pnz_big = False
+
         for key in range(1, 6):
             for tup in pnz_bigs[key]:
                 if price_within([tup], scaled_close):
                     flag_pnz_big = True
-                    if key == 6:
-                        colour_print(f"ACME Big {key}: {tup}", MAGENTA, REVERSE)
-                    elif key == 5:
-                        colour_print(f"ACME Big {key}: {tup}", GREEN, REVERSE)
-                    elif key == 4:
-                        colour_print(f"ACME Big {key}: {tup}", CYAN, REVERSE)
-                    elif key == 3:
-                        colour_print(f"ACME Big {key}: {tup}", YELLOW, REVERSE)
-                    elif key == 2:
-                        colour_print(f"ACME Big {key}: {tup}", BLUE, REVERSE)
-                    elif key == 1:
-                        colour_print(f"ACME Big {key}: {tup}", BLACK, REVERSE)
+                    this_message.append(colour_print(f"ACME Big {key}: {tup}", *color_map[key], return_message=True))
                     break
-                else:
-                    flag_not_in_zone = True  # Raise the flag when the price is not within the current ACME zone
-            if flag_pnz_big or flag_not_in_zone:
+            if flag_pnz_big:
                 break
-        if flag_not_in_zone and not flag_pnz_big:
-            print("Not in ACME zone")
+        if not flag_pnz_big and not flag_pnz_small:
+            this_message.append("Not in ACME big zone or across ACME small zone")
     else:
-        print("No data available in the response.")
+        this_message.append("No data available in the response.")
 
-    print('*' * 40)
-    print()
+    this_message.append('*' * 50)
+    this_message.append('')
+
+    # printing all the messages at the end
+    for message in this_message:
+        print(message)
+    return this_message

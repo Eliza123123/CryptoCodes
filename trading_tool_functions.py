@@ -21,39 +21,45 @@ UNDERLINE = '\u001b[4m'
 REVERSE = '\u001b[7m'
 
 
-def colour_print(text: str, *effects: str) -> None:
+def colour_print(text: str, *effects: str, return_message: bool) -> str:
     """
-    Prints the given text string with specified color and other visual effects
-    by leveraging the ANSI escape sequences.
+   Prints or returns the given text string with specified color and other visual effects
+   by leveraging the ANSI escape sequences.
 
-    This function creates a stylized output by concatenating the desired visual
-    effects, the input text, and the reset sequence, and then prints this
-    resulting string. Before and after printing, the function initializes and
-    de-initializes the colorama library, respectively, to ensure the proper
-    functioning of the color and style sequences.
+   This function creates a stylized output by concatenating the desired visual
+   effects, the input text, and the reset sequence, and then either prints or returns this
+   resulting string depending upon the `return_message` flag. Before and after printing, the function initializes and
+   de-initializes the colorama library, respectively, to ensure the proper
+   functioning of the color and style sequences.
 
-    :param text: A string representing the text to be printed.
+   :param text: A string representing the text to be printed.
 
-    :param effects: A variable number of strings each representing a desired
-    visual effect. These effects should correspond to the ANSI escape sequences,
-    and can include color sequences (like RED, BLUE, etc.), and others (like
-    BOLD, UNDERLINE, etc.). The function concatenates these effects in the order
-    they are provided, and applies them to the printed text.
+   :param effects: A variable number of strings each representing a desired
+   visual effect. These effects should correspond to the ANSI escape sequences,
+   and can include color sequences (like RED, BLUE, etc.), and others (like
+   BOLD, UNDERLINE, etc.). The function concatenates these effects in the order
+   they are provided, and applies them to the printed text.
 
-    Note: This function does not return any value, and instead directly prints
-    to the standard output.
+   :param return_message: A boolean indicating whether to return the formatted text (True)
+   or to print it (False).
 
-    Example usage:
+   If `return_message` is True, the function will return the stylized text as a string.
+   If it is False, the function will print the stylized text and return None.
 
-    ```
-    colour_print("Hello, world!", RED, BOLD)
-    ```
-    This example prints the text "Hello, world!" in bold red color.
-    """
+   Example usage:
+
+   ```
+   colour_print("Hello, world!", RED, BOLD)
+   ```
+   This example prints the text "Hello, world!" in bold red color.
+   """
     effect_string = "".join(effects)
     output_string = "{0}{1}{2}".format(effect_string, text, RESET)
     colorama.init()
-    print(output_string)
+    if return_message:
+        return output_string
+    else:
+        print(output_string)
     colorama.deinit()
 
 

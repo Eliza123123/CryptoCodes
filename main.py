@@ -1,8 +1,5 @@
 from liquidation_acme import binance_liquidations, websocket_uri, process_messages
 import asyncio
-import colorama
-
-colorama.init()
 
 
 async def main():
@@ -10,7 +7,7 @@ async def main():
     Executes the main program flow
     """
     tasks = [
-        process_messages(),
+        process_messages(liquidation_size_filter=1),
         binance_liquidations(websocket_uri)
     ]
 
