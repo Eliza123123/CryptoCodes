@@ -1,11 +1,12 @@
 import asyncio
 import websockets
 import json
+from datetime import datetime
 
 websocket_uri = "wss://fstream.binance.com/ws/!forceOrder@arr"
 
 
-async def binance_liquidations(uri):
+async def print_liquidations(uri):
     async with websockets.connect(uri) as websocket:
         try:
             while True:
@@ -21,8 +22,9 @@ async def binance_liquidations(uri):
                 m4 = "Price: " + msg["p"]
                 m5 = "USD Value: $" + str(round(quantity * price, 2))
                 m5float = float(round(quantity * price, 2))
-                m6 = "-----------------"
-                blocktext = '\n'.join([m1, m2, m3, m4, m5, m6])
+                m6 = "Timestamp: " + datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                m7 = "-----------------"
+                blocktext = '\n'.join([m1, m2, m3, m4, m5, m6, m7])
                 if m5float > 1:
                     print(blocktext)
         except Exception as e:
@@ -30,4 +32,4 @@ async def binance_liquidations(uri):
 
 
 print('starting')
-asyncio.run(binance_liquidations(websocket_uri))
+asyncio.run(print_liquidations(websocket_uri))

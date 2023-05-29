@@ -11,25 +11,30 @@ import colorama
 import queue
 import asyncio
 
-colorama.init()
+liquidation_size_filter = 1
+symbols = []
 
 websocket_uri = "wss://fstream.binance.com/ws/!forceOrder@arr"
 url = 'https://fapi.binance.com/fapi/v1/klines'
+headers = {'X-MBX-APIKEY': api_key}
 
-headers = {
-    'X-MBX-APIKEY': api_key
-}
-
-symbols = []
-liquidation_size_filter = 1
-
+colorama.init()
 messages = queue.Queue()
 
 
 async def binance_liquidations(uri: str) -> None:
     """
-    Connects to the Binance WebSocket and processes liquidation messages.
-    Passes the symbol to the process_symbols function.
+    This function establishes a WebSocket connection to Binance and continuously processes
+    liquidation messages. These messages are passed to the process_symbols function for further processing.
+
+    The function leverages the ping mechanism inherent to WebSockets to keep the connection alive.
+    The ping_interval parameter is set to 20 seconds, meaning that a ping frame is sent to the server
+    every 20 seconds. If no pong response is received from the server within the ping_timeout
+    period (set to 10 seconds), the client presumes the connection is dead and will throw
+    a websockets.exceptions.ConnectionClosedError.
+
+    In the event of an unexpected disconnection, the function will attempt to reconnect
+    after a 1-second delay.
 
     :param uri: The URI to connect to the Binance WebSocket.
     """
@@ -50,7 +55,28 @@ async def binance_liquidations(uri: str) -> None:
             break
 
 
-async def process_messages():
+async def process_messages() -> None:
+    """
+     Continuously processes messages from a global queue.
+
+     The function runs in an infinite loop, during which it checks if the global message queue is not empty.
+     If the queue contains messages, it fetches a message, processes it, and sends it for further processing
+     if certain conditions are met.
+
+     Each message is a dictionary containing details about a liquidation event. The function extracts the
+     symbol, quantity, and price from the message, and then constructs a block of text containing these
+     details along with additional information like the side of the trade (buyer/seller liquidated), the
+     USD value of the trade, and a timestamp.
+
+     If the USD value of the trade is greater than a predefined threshold (liquidation_size_filter), the
+     function sends the symbol and the block of text to the process_symbols function for further processing.
+
+     If the queue is empty, the function waits for 0.01 seconds before checking the queue again. This
+     pause is necessary to prevent the CPU from constantly polling the queue when it's empty, which can
+     lead to high CPU usage (a condition known as 'CPU spin').
+
+     This is a coroutine function and must be used with await or inside another coroutine function.
+    """
     while True:
         if not messages.empty():
             msg = messages.get()
@@ -78,10 +104,24 @@ async def process_messages():
 
 async def process_symbols(symbol: str, liquidation_message: str) -> None:
     """
-    Processes symbols and performs relevant operations.
+    Processes the given symbol and performs various calculations and checks related to liquidations.
 
-    :param symbol: The symbol to process.
-    :param liquidation_message: The liquidation message associated with the symbol.
+    This function performs a series of operations on the symbol data related to liquidations:
+    1. Fetches the latest candle data for the symbol from Binance with a 1-minute interval.
+    2. If the fetched data is not empty, the open and close prices of the candle are extracted,
+       and then scaled by dividing by the respective scale values.
+    3. The liquidation message is printed and the scaled close price is displayed.
+    4. The function then checks whether the scaled open and close prices pass through
+       predefined ACME small price levels, and prints a message if so.
+    5. The function checks whether the scaled close price is within predefined ACME big price
+       levels. If so, it prints a message indicating the relevant level and breaks out of the loop.
+    6. If the fetched data is empty, the function prints a message indicating that no data is available.
+    7. Finally, it prints a separator line to delimit the output for each symbol.
+
+    This is a coroutine function and should be used with await or inside another coroutine function.
+
+    :param symbol: The trading symbol to be processed.
+    :param liquidation_message: The message associated with a liquidation event for the symbol.
     """
     parameters = {
         'symbol': symbol,
