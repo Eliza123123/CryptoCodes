@@ -1,19 +1,18 @@
-import statistics
-
-from tabulate import tabulate
-
-from trading_tool_functions import json, get_scale, \
-    through_pnz_small, colour_print, REVERSE, price_within, MAGENTA, \
-    GREEN, CYAN, YELLOW, BLUE, BLACK, fetch_data, UNDERLINE, RED, BOLD
-from acme_calculations import pnz_bigs, pnz_smalls
 from keys import api_key
 from datetime import datetime
+from tabulate import tabulate
+from websockets import exceptions
+from acme_calculations import pnz_bigs, pnz_smalls
+from trading_tool_functions import json, get_scale, \
+    through_pnz_small, colour_print, price_within, fetch_data, \
+    MAGENTA, GREEN, CYAN, YELLOW, BLUE, BLACK, RED, \
+    UNDERLINE, BOLD, REVERSE
 
 import websockets
-from websockets import exceptions
 import colorama
 import queue
 import asyncio
+import statistics
 
 websocket_uri = "wss://fstream.binance.com/ws/!forceOrder@arr"
 url = 'https://fapi.binance.com/fapi/v1/klines'
@@ -25,19 +24,20 @@ messages = queue.Queue()
 
 async def binance_liquidations(uri: str) -> None:
     """
-    This function establishes a WebSocket connection to Binance and continuously processes
-    liquidation messages. These messages are passed to the process_symbols function for further processing.
+    This is an asynchronous coroutine that establishes a connection with the Binance
+    cryptocurrency exchange's liquidation data websocket server and continuously monitors
+    the stream of data.
 
-    The function leverages the ping mechanism inherent to WebSockets to keep the connection alive.
-    The ping_interval parameter is set to 20 seconds, meaning that a ping frame is sent to the server
-    every 20 seconds. If no pong response is received from the server within the ping_timeout
-    period (set to 10 seconds), the client presumes the connection is dead and will throw
-    a websockets.exceptions.ConnectionClosedError.
+    If the connection to the server is lost, the function automatically attempts to
+    reconnect after a brief delay.
 
-    In the event of an unexpected disconnection, the function will attempt to reconnect
-    after a 1-second delay.
+    Each message received from the server is a JSON string representing a liquidation
+    event. The function loads the JSON string into a Python dictionary and puts it into
+    a global queue for further processing.
 
-    :param uri: The URI to connect to the Binance WebSocket.
+    :param uri: The Uniform Resource Identifier (URI) of the websocket server.
+    :return None: The function runs indefinitely, receiving messages and putting them in the
+        global queue.
     """
     while True:  # Add a loop for automatic reconnection
         try:
@@ -50,35 +50,32 @@ async def binance_liquidations(uri: str) -> None:
                         messages.put(json.loads(msg)["o"])
         except websockets.exceptions.ConnectionClosedError as e:
             print(f"Connection closed unexpectedly: {e}. Retrying connection...")
-            await asyncio.sleep(1)  # Wait before reconnecting
         except Exception as e:
-            print(f"Unexpected error occurred: {e}")
-            break
+            print(f"Unexpected error occurred: {e}. Retrying connection...")
+        finally:
+            await asyncio.sleep(1)  # Wait before reconnecting
 
 
 async def process_messages(liquidation_size_filter: int) -> None:
     """
-     Continuously processes messages from a global queue.
+    This function is an asynchronous coroutine that continuously monitors and processes messages
+    from a global queue. The messages represent cryptocurrency liquidation events.
 
-     The function runs in an infinite loop, during which it checks if the global message queue is not empty.
-     If the queue contains messages, it fetches a message, processes it, and sends it for further processing
-     if certain conditions are met.
+    Each message in the queue is a dictionary containing details about a single liquidation event.
+    The function pulls messages from the queue, extracts the relevant details (such as symbol,
+    quantity, and price), and formats this data into a human-readable text block.
 
-     Each message is a dictionary containing details about a liquidation event. The function extracts the
-     symbol, quantity, and price from the message, and then constructs a block of text containing these
-     details along with additional information like the side of the trade (buyer/seller liquidated), the
-     USD value of the trade, and a timestamp.
+    If the calculated USD value of the liquidation event (quantity * price) exceeds the
+    'liquidation_size_filter', the function forwards the symbol and the formatted message to
+    the 'process_symbols' function for further processing.
 
-     If the USD value of the trade is greater than a predefined threshold (liquidation_size_filter), the
-     function sends the symbol and the block of text to the process_symbols function for further processing.
+    When the queue is empty, the function waits for a short period (0.01 seconds) before checking
+    the queue again to avoid excessive CPU usage.
 
-     If the queue is empty, the function waits for 0.01 seconds before checking the queue again. This
-     pause is necessary to prevent the CPU from constantly polling the queue when it's empty, which can
-     lead to high CPU usage (a condition known as 'CPU spin').
-
-     This is a coroutine function and must be used with await or inside another coroutine function.
-
-     :param liquidation_size_filter: Any liquidation values under this level will not be passed to process_symbols
+    :param liquidation_size_filter: This value acts as a filter threshold. Liquidation events
+        with a calculated USD value below this threshold are ignored.
+    :return None: The function runs indefinitely, processing messages and passing them to
+        'process_symbols' as needed.
     """
     while True:
         if not messages.empty():
@@ -111,6 +108,28 @@ zscore_tables = {}
 
 
 async def volume_filter(symbol: str, n: int, *timeframes: str) -> dict:
+    """
+    This function calculates the Z-scores of trading volumes for multiple timeframes of a given symbol
+    and displays them in a tabulated format.
+
+    It first checks if the Z-scores for the symbol were calculated within the last 5 minutes. If they were,
+    it prints the stored Z-scores and returns them. If not, it sends requests to fetch the latest trading data
+    for each timeframe and calculates the Z-scores.
+
+    The Z-scores are calculated as follows:
+    Z-score = (current_volume - mean_volume) / standard_deviation_volume
+
+    Once calculated, the Z-scores are printed in a tabulated format and stored for later use.
+
+    This function leverages asyncio.gather() to send multiple requests concurrently, improving the speed
+    and efficiency of the function.
+
+    :param symbol: The trading symbol to fetch data for.
+    :param n: The number of latest data points to fetch for each timeframe.
+    :param timeframes: Variable length argument, each specifying a timeframe to fetch data for.
+    :return: A dictionary where each key is a timeframe and its corresponding value is the Z-score
+             for that timeframe.
+    """
     print('*' * 50)
     colour_print(f"{symbol} multi-timeframe volume analysis", UNDERLINE, return_message=False)
 
@@ -118,8 +137,10 @@ async def volume_filter(symbol: str, n: int, *timeframes: str) -> dict:
     if last_time is not None:
         # If it was calculated less than 5 minutes ago, print the stored Z-score table and return
         if (datetime.now() - last_time).seconds < 5 * 60:
-            print(zscore_tables[symbol])
-            return zscore_tables[symbol]  # return the previously stored Z-scores
+            table = tabulate([[tf, zs] for tf, zs in zscore_tables[symbol].items()],
+                             headers=["Timeframe", "Z-score"], tablefmt="pipe", floatfmt=".2f")
+            print(table)
+            return zscore_tables[symbol]  # return the previously stored Z-scores as a dict
 
     # Create a list of tasks to run concurrently
     tasks = []
@@ -173,14 +194,17 @@ async def process_symbols(symbol: str, liquidation_message: str, liq_value: floa
     5. The function checks whether the scaled close price is within predefined ACME big price
        levels. If so, it prints a message indicating the relevant level and breaks out of the loop.
     6. If the fetched data is empty, the function prints a message indicating that no data is available.
-    7. Finally, it prints a separator line to delimit the output for each symbol.
+    7. Depending on the liquidation value, the function checks if the buy or sell conditions are met,
+       and if so, it appends an appropriate message to the list.
+    8. Finally, it prints a separator line to delimit the output for each symbol and returns the list of messages.
 
     This is a coroutine function and should be used with await or inside another coroutine function.
 
-    :param liq_value:
     :param symbol: The trading symbol to be processed.
-
     :param liquidation_message: The message associated with a liquidation event for the symbol.
+    :param liq_value: The value associated with a liquidation event for the symbol.
+
+    :return: A list of messages to be printed.
     """
     parameters = {
         'symbol': symbol,
