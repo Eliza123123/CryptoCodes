@@ -7,8 +7,8 @@ async def main():
     Executes the main program flow
     """
     tasks = [
+        binance_liquidations(websocket_uri),
         process_messages(liquidation_size_filter=1),
-        binance_liquidations(websocket_uri)
     ]
 
     await asyncio.gather(*tasks)
