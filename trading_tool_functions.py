@@ -108,7 +108,7 @@ def constant_frame(*consts: float) -> list:
     return sorted(values_list)
 
 
-async def fetch_data(url: str, parameters: dict, headers: dict) -> dict:
+async def fetch_data(url: str, parameters: dict) -> dict:
     """
     Fetch data from a specified URL, using provided parameters and headers. This function sends an
     asynchronous HTTP GET request to the URL, using the parameters and headers to customize the request.
@@ -145,7 +145,7 @@ async def fetch_data(url: str, parameters: dict, headers: dict) -> dict:
     )
     ```
     """
-    response = requests.get(url, params=parameters, headers=headers)
+    response = requests.get(url, params=parameters)
     return response.json()
 
 

@@ -1,4 +1,4 @@
-from keys import api_key
+import locale
 from datetime import datetime
 from tabulate import tabulate
 from websockets import exceptions
@@ -16,10 +16,19 @@ import statistics
 
 websocket_uri = "wss://fstream.binance.com/ws/!forceOrder@arr"
 url = 'https://fapi.binance.com/fapi/v1/klines'
-headers = {'X-MBX-APIKEY': api_key}
 
 colorama.init()
+locale.setlocale(locale.LC_MONETARY, '')
 messages = queue.Queue()
+
+last_calculated = {}  # dictionary to keep track of when each symbol was last calculated
+zscore_tables = {}
+
+vol_timeframes = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h']
+vol_candle_lookback = 27
+
+output_table = []
+output_confirmation = []
 
 
 async def binance_liquidations(uri: str) -> None:
@@ -83,31 +92,56 @@ async def process_messages(liquidation_size_filter: int) -> None:
             symbol = msg["s"]
             quantity = float(msg["q"])
             price = float(msg["p"])
-            liq_value = round(quantity * price, 2)
+            liq_value = round(float(quantity * price), 2)
 
-            m1 = '-' * 50
-            m2 = "Symbol: " + symbol
-            m3 = "Side: " + "Buyer Liquidated" \
-                if msg["S"] == "SELL" else "Seller Liquidated"
-            m4 = "Quantity: " + msg["q"]
-            m5 = "Price: " + msg["p"]
-            m6 = "Liquidation Value: $" + str(round(quantity * price, 2))
-            m7 = "Timestamp: " + datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            if liq_value > liquidation_size_filter:
+                candle_open, candle_close, scaled_open, scaled_close = await get_scaled_price(symbol)
 
-            blocktext = '\n'.join([m1, m2, m3, m4, m5, m6, m7])
+                output_table.append(["Symbol", symbol])
+                output_table.append(["Side", "Buyer Liquidated" if msg["S"] == "SELL" else "Seller Liquidated"])
+                output_table.append(["Quantity", msg["q"]])
+                output_table.append(["Price", msg["p"]])
+                output_table.append(["Liquidation Value", locale.currency(liq_value, grouping=True)])
+                output_table.append(["Timestamp", datetime.now().strftime('%Y-%m-%d %H:%M:%S')])
+                output_table.append(["Scaled Price", scaled_close])
 
-            if float(round(quantity * price, 2)) > liquidation_size_filter:
-                # Pass the symbol to process_symbols function
-                await process_symbols(symbol, blocktext, liq_value)
+                pnz = await get_pnz(scaled_open, scaled_close)
+
+                if pnz:
+                    zscore_vol = await volume_filter(symbol, vol_candle_lookback, vol_timeframes)
+
+                    print('-' * 65)
+                    # 1. Print volume analysis
+                    print(tabulate([['Z-Score'] + [zs for zs in zscore_vol.values()]],
+                                   headers=['Timeframe'] + [zs for zs in zscore_vol.keys()],
+                                   tablefmt="simple",
+                                   floatfmt=".2f"))
+                    print('-' * 65)
+                    # 2. Print symbol info
+                    print(tabulate(output_table, tablefmt="plain"))
+                    print('-' * 65)
+
+                    if any(z_score > 2 for z_score in zscore_vol.values()) and liq_value > 4427:
+                        side = "Sell" if msg["S"] == "SELL" else "Buy"
+                        color = GREEN if msg["S"] == "SELL" else RED
+                        output_confirmation.append("\n")
+                        output_confirmation.append(colour_print(f"{side} conditions are met", color, BOLD, UNDERLINE, return_message=True))
+                        output_confirmation.append("\n")
+                else:
+                    output_confirmation.append("Liquidation: ACME not detected.")
+
+                # 3. Print confirmation messages
+                for confirmation in output_confirmation:
+                    print(confirmation)
+
+                # Reset tables
+                output_table.clear()
+                output_confirmation.clear()
         else:
             await asyncio.sleep(0.01)  # prevent CPU spin when the queue is empty
 
 
-last_calculated = {}  # dictionary to keep track of when each symbol was last calculated
-zscore_tables = {}
-
-
-async def volume_filter(symbol: str, n: int, *timeframes: str) -> dict:
+async def volume_filter(symbol: str, n: int, timeframes: list) -> dict:
     """
     This function calculates the Z-scores of trading volumes for multiple timeframes of a given symbol
     and displays them in a tabulated format.
@@ -130,16 +164,11 @@ async def volume_filter(symbol: str, n: int, *timeframes: str) -> dict:
     :return: A dictionary where each key is a timeframe and its corresponding value is the Z-score
              for that timeframe.
     """
-    print('*' * 50)
-    colour_print(f"{symbol} multi-timeframe volume analysis", UNDERLINE, return_message=False)
 
     last_time = last_calculated.get(symbol)
     if last_time is not None:
         # If it was calculated less than 5 minutes ago, print the stored Z-score table and return
         if (datetime.now() - last_time).seconds < 5 * 60:
-            table = tabulate([[tf, zs] for tf, zs in zscore_tables[symbol].items()],
-                             headers=["Timeframe", "Z-score"], tablefmt="pipe", floatfmt=".2f")
-            print(table)
             return zscore_tables[symbol]  # return the previously stored Z-scores as a dict
 
     # Create a list of tasks to run concurrently
@@ -150,7 +179,7 @@ async def volume_filter(symbol: str, n: int, *timeframes: str) -> dict:
             'interval': timeframe,
             'limit': n,
         }
-        tasks.append(fetch_data(url=url, parameters=parameters, headers=headers))
+        tasks.append(fetch_data(url, parameters))
 
     # Gather tasks and run them concurrently
     responses = await asyncio.gather(*tasks)
@@ -168,10 +197,6 @@ async def volume_filter(symbol: str, n: int, *timeframes: str) -> dict:
         # Store the Z-score for this timeframe in the dictionary
         zscores[timeframe] = z_score
 
-    # Print and store the Z-scores in a table
-    table = tabulate([[tf, zs] for tf, zs in zscores.items()],
-                     headers=["Timeframe", "Z-score"], tablefmt="pipe", floatfmt=".2f")
-    print(table)
     zscore_tables[symbol] = zscores  # store the Z-scores
 
     # Update the time of the last calculation for this symbol
@@ -180,109 +205,140 @@ async def volume_filter(symbol: str, n: int, *timeframes: str) -> dict:
     return zscores  # return the Z-scores
 
 
-async def process_symbols(symbol: str, liquidation_message: str, liq_value: float) -> list:
-    """
-    Processes the given symbol and performs various calculations and checks related to liquidations.
-
-    This function performs a series of operations on the symbol data related to liquidations:
-    1. Fetches the latest candle data for the symbol from Binance with a 1-minute interval.
-    2. If the fetched data is not empty, the open and close prices of the candle are extracted,
-       and then scaled by dividing by the respective scale values.
-    3. The liquidation message is printed and the scaled close price is displayed.
-    4. The function then checks whether the scaled open and close prices pass through
-       predefined ACME small price levels, and prints a message if so.
-    5. The function checks whether the scaled close price is within predefined ACME big price
-       levels. If so, it prints a message indicating the relevant level and breaks out of the loop.
-    6. If the fetched data is empty, the function prints a message indicating that no data is available.
-    7. Depending on the liquidation value, the function checks if the buy or sell conditions are met,
-       and if so, it appends an appropriate message to the list.
-    8. Finally, it prints a separator line to delimit the output for each symbol and returns the list of messages.
-
-    This is a coroutine function and should be used with await or inside another coroutine function.
-
-    :param symbol: The trading symbol to be processed.
-    :param liquidation_message: The message associated with a liquidation event for the symbol.
-    :param liq_value: The value associated with a liquidation event for the symbol.
-
-    :return: A list of messages to be printed.
-    """
+async def get_scaled_price(symbol: str) -> list:
     parameters = {
         'symbol': symbol,
         'interval': '1m',
         'limit': 1,
     }
-    data = await fetch_data(url=url, parameters=parameters, headers=headers)
-    this_message = []  # initialize list for storing messages
+    data = await fetch_data(url, parameters)
 
-    if data:  # Check if data is not empty
-        candle_open = float(data[0][1])
-        candle_close = float(data[0][4])
-        scale_factor = get_scale(min(candle_open, candle_close))
-        scaled_open = candle_open / scale_factor
-        scaled_close = candle_close / scale_factor
+    if not data:
+        return []
 
-        color_map = {6: (MAGENTA, REVERSE), 5: (GREEN, REVERSE),
-                     4: (CYAN, REVERSE), 3: (YELLOW, REVERSE),
-                     2: (BLUE, REVERSE), 1: (BLACK, REVERSE)}
+    candle_open = float(data[0][1])
+    candle_close = float(data[0][4])
+    scale_factor = get_scale(min(candle_open, candle_close))
+    return [candle_open, candle_close, candle_open / scale_factor, candle_close / scale_factor]
 
-        this_message.append(liquidation_message)
-        this_message.append(f"Scaled Price: {scaled_close}")
 
-        flag_pnz_small = False
-        seen_tups = set()
-        for tup in pnz_smalls[1]:
-            if tup not in seen_tups and through_pnz_small([tup],
-                                                          scaled_open,
-                                                          scaled_close):
-                seen_tups.add(tup)
-                flag_pnz_small = True
-                this_message.append(colour_print(f"ACME Small: {tup}",
-                                                 REVERSE,
-                                                 return_message=True))
-        flag_pnz_big = False
+async def get_pnz(scaled_open: float, scaled_close: float) -> bool:
+    color_map = {
+        6: (MAGENTA, REVERSE), 5: (GREEN, REVERSE),
+        4: (CYAN, REVERSE), 3: (YELLOW, REVERSE),
+        2: (BLUE, REVERSE), 1: (BLACK, REVERSE)
+    }
 
-        for key in range(3, 6):
-            for tup in pnz_bigs[key]:
-                if price_within([tup], scaled_close):
-                    flag_pnz_big = True
-                    this_message.append(colour_print(f"ACME Big {key}: {tup}",
-                                                     *color_map[key],
-                                                     return_message=True))
-                    break
-            if flag_pnz_big:
-                break
+    flag_pnz_sm = False
+    seen_tups = set()
 
-        if not flag_pnz_big and not flag_pnz_small:
-            this_message.append("Not in ACME big zone or across ACME small zone")
+    for tup in pnz_smalls[1]:
+        if tup not in seen_tups and through_pnz_small([tup], scaled_open, scaled_close):
+            seen_tups.add(tup)
+            flag_pnz_sm = True
+            output_table.append([colour_print(f"ACME Small", REVERSE, return_message=True), tup])
 
-        if flag_pnz_small or flag_pnz_big:
-            volume_scores = await volume_filter(symbol, 27,
-                                                '1m', '3m',
-                                                '5m', '15m',
-                                                '30m', '1h',
-                                                '2h', '4h')
+    for key in range(3, 6):
+        for tup in pnz_bigs[key]:
+            if price_within([tup], scaled_close):
+                output_table.append([colour_print(f"ACME Big {key}", *color_map[key], return_message=True), tup])
+                return True
 
-            if 'Buyer Liquidated' in liquidation_message:
-                if liq_value > 4427:
-                    if any(z_score > 2 for z_score in volume_scores.values()):
-                        this_message.append(colour_print("\nBuy conditions are met.",
-                                                         GREEN, BOLD, UNDERLINE,
-                                                         return_message=True))
+    return flag_pnz_sm
 
-            if 'Seller Liquidated' in liquidation_message:
-                if liq_value > 4427:
-                    if any(z_score > 2 for z_score in volume_scores.values()):
-                        this_message.append(colour_print("\nSell conditions are met.",
-                                                         RED, BOLD, UNDERLINE,
-                                                         return_message=True))
-
-    else:
-        this_message.append("No data available in the response.")
-
-    this_message.append('*' * 50)
-    this_message.append('\n')
-
-    # printing all the messages at the end
-    for message in this_message:
-        print(message)
-    return this_message
+# async def process_symbols(symbol: str, liq_value: float) -> None:
+#     """
+#     Processes the given symbol and performs various calculations and checks related to liquidations.
+#
+#     This function performs a series of operations on the symbol data related to liquidations:
+#     1. Fetches the latest candle data for the symbol from Binance with a 1-minute interval.
+#     2. If the fetched data is not empty, the open and close prices of the candle are extracted,
+#        and then scaled by dividing by the respective scale values.
+#     3. The liquidation message is printed and the scaled close price is displayed.
+#     4. The function then checks whether the scaled open and close prices pass through
+#        predefined ACME small price levels, and prints a message if so.
+#     5. The function checks whether the scaled close price is within predefined ACME big price
+#        levels. If so, it prints a message indicating the relevant level and breaks out of the loop.
+#     6. If the fetched data is empty, the function prints a message indicating that no data is available.
+#     7. Depending on the liquidation value, the function checks if the buy or sell conditions are met,
+#        and if so, it appends an appropriate message to the list.
+#     8. Finally, it prints a separator line to delimit the output for each symbol and returns the list of messages.
+#
+#     This is a coroutine function and should be used with await or inside another coroutine function.
+#
+#     :param symbol: The trading symbol to be processed.
+#     :param liquidation_message: The message associated with a liquidation event for the symbol.
+#     :param liq_value: The value associated with a liquidation event for the symbol.
+#
+#     :return: A list of messages to be printed.
+#     """
+#     parameters = {
+#         'symbol': symbol,
+#         'interval': '1m',
+#         'limit': 1,
+#     }
+#     data = await fetch_data(url, parameters)
+#     this_message = []  # initialize list for storing messages
+#
+#     if data:  # Check if data is not empty
+#         candle_open = float(data[0][1])
+#         candle_close = float(data[0][4])
+#         scale_factor = get_scale(min(candle_open, candle_close))
+#         scaled_open = candle_open / scale_factor
+#         scaled_close = candle_close / scale_factor
+#
+#         color_map = {6: (MAGENTA, REVERSE), 5: (GREEN, REVERSE),
+#                      4: (CYAN, REVERSE), 3: (YELLOW, REVERSE),
+#                      2: (BLUE, REVERSE), 1: (BLACK, REVERSE)}
+#
+#         output_table.append(["Scaled Price", scaled_close])
+#
+#         flag_pnz_small = False
+#         seen_tups = set()
+#         for tup in pnz_smalls[1]:
+#             if tup not in seen_tups and through_pnz_small([tup], scaled_open, scaled_close):
+#                 seen_tups.add(tup)
+#                 flag_pnz_small = True
+#                 this_message.append(colour_print(f"ACME Small: {tup}",
+#                                                  REVERSE,
+#                                                  return_message=True))
+#         flag_pnz_big = False
+#
+#         for key in range(3, 6):
+#             for tup in pnz_bigs[key]:
+#                 if price_within([tup], scaled_close):
+#                     flag_pnz_big = True
+#                     this_message.append(colour_print(f"ACME Big {key}: {tup}",
+#                                                      *color_map[key],
+#                                                      return_message=True))
+#                     break
+#             if flag_pnz_big:
+#                 break
+#
+#         if flag_pnz_small or flag_pnz_big:
+#             print("a")
+#             # zscore_vol = await volume_filter(symbol, vol_candle_lookback, vol_timeframes)
+#             #
+#             # # Print volume analysis
+#             # print(tabulate([['Z-Score'] + [zs for zs in zscore_vol.values()]],
+#             #                headers=['Timeframe'] + [zs for zs in zscore_vol.keys()],
+#             #                tablefmt="simple",
+#             #                floatfmt=".2f"))
+#             #
+#             # if any(z_score > 2 for z_score in zscore_vol.values()):
+#             #     if liq_value > 4427:
+#             #         side = "Buy" if 'Buyer' in liquidation_message else "Sell"
+#             #         color = GREEN if 'Buyer' in liquidation_message else RED
+#             #         this_message.append(colour_print(f"{side} conditions are met", color, BOLD, UNDERLINE, return_message=True))
+#
+#         else:
+#             this_message.append("Not in ACME big zone or across ACME small zone")
+#     else:
+#         this_message.append("No data available in the response.")
+#
+#     # this_message.append('*' * 50)
+#     this_message.append('\n')
+#
+#     # printing all the messages at the end
+#     for message in this_message:
+#         print(message)
