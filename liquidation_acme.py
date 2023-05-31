@@ -1,4 +1,3 @@
-import locale
 from datetime import datetime
 from tabulate import tabulate
 from websockets import exceptions
@@ -7,7 +6,9 @@ from trading_tool_functions import json, get_scale, \
     through_pnz_small, colour_print, price_within, fetch_data, \
     MAGENTA, GREEN, CYAN, YELLOW, BLUE, BLACK, RED, \
     UNDERLINE, BOLD, REVERSE
+from config import Config
 
+import locale
 import websockets
 import colorama
 import queue
@@ -20,12 +21,13 @@ url = 'https://fapi.binance.com/fapi/v1/klines'
 colorama.init()
 locale.setlocale(locale.LC_MONETARY, '')
 messages = queue.Queue()
+conf = Config("config.yaml")
 
 last_calculated = {}  # dictionary to keep track of when each symbol was last calculated
 zscore_tables = {}
 
-vol_timeframes = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h']
-vol_candle_lookback = 27
+# vol_timeframes = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h']
+# vol_candle_lookback = 27
 
 output_table = []
 output_confirmation = []
@@ -108,7 +110,7 @@ async def process_messages(liquidation_size_filter: int) -> None:
                 pnz = await get_pnz(scaled_open, scaled_close)
 
                 if pnz:
-                    zscore_vol = await volume_filter(symbol, vol_candle_lookback, vol_timeframes)
+                    zscore_vol = await volume_filter(symbol, conf.zscore_lookback, conf.zscore_timeframes)
 
                     print('-' * 65)
                     # 1. Print volume analysis
@@ -121,7 +123,7 @@ async def process_messages(liquidation_size_filter: int) -> None:
                     print(tabulate(output_table, tablefmt="plain"))
                     print('-' * 65)
 
-                    if any(z_score > 2 for z_score in zscore_vol.values()) and liq_value > 4427:
+                    if any(z_score > conf.filters["zscore"] for z_score in zscore_vol.values()) and liq_value > conf.filters["liquidation"]:
 
                         side = "SELL" if msg["S"] == "BUY" else "BUY"
                         color = GREEN if side == "BUY" else RED
