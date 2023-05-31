@@ -1,4 +1,3 @@
-import locale
 from datetime import datetime
 from tabulate import tabulate
 from websockets import exceptions
@@ -7,7 +6,9 @@ from acme_calculations import pnz_bigs, pnz_smalls
 from trading_tool_functions import json, get_scale, \
     through_pnz_small, price_within, fetch_data
 
+from config import Config
 
+import locale
 import websockets
 import colorama
 import queue
@@ -20,12 +21,10 @@ url = 'https://fapi.binance.com/fapi/v1/klines'
 colorama.init()
 locale.setlocale(locale.LC_MONETARY, '')
 messages = queue.Queue()
+conf = Config("config.yaml")
 
 last_calculated = {}  # dictionary to keep track of when each symbol was last calculated
 zscore_tables = {}
-
-vol_timeframes = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h']
-vol_candle_lookback = 27
 
 output_table = []
 output_confirmation = []
@@ -97,7 +96,9 @@ async def process_messages(liquidation_size_filter: int) -> None:
             price = float(msg["p"])
             liq_value = round(float(quantity * price), 2)
 
-            if liq_value > liquidation_size_filter:
+            if symbol in conf.excluded_symbols:
+                print(f"{symbol} Liquidation in excluded list.")
+            elif liq_value > liquidation_size_filter:
                 candle_open, candle_close, scaled_open, scaled_close = await get_scaled_price(symbol)
 
                 output_table.append(["Symbol", symbol])
@@ -111,7 +112,7 @@ async def process_messages(liquidation_size_filter: int) -> None:
                 pnz = await get_pnz(scaled_open, scaled_close)
 
                 if pnz:
-                    zscore_vol = await volume_filter(symbol, vol_candle_lookback, vol_timeframes)
+                    zscore_vol = await volume_filter(symbol, conf.zscore_lookback, conf.zscore_timeframes)
 
                     print('-' * 65)
                     discord_message.append('-' * 65)
@@ -145,12 +146,19 @@ async def process_messages(liquidation_size_filter: int) -> None:
                         discord_message.append('-' * 65)
 
                         send_to_acme_channel(discord_message)
+                    if any(z_score > conf.filters["zscore"] for z_score in zscore_vol.values()) \
+                            and liq_value > conf.filters["liquidation"]:
+
+                        side = "SELL" if msg["S"] == "BUY" else "BUY"
+                        output_confirmation.append("\n")
+                        output_confirmation.append(f"{side} conditions are met")
 
                 else:
                     output_confirmation.append("Liquidation: ACME not detected.")
                     # discord_message.append("Liquidation: ACME not detected.")
                     #
                     # send_to_acme_channel(discord_message)
+                    output_confirmation.append(f" {symbol} Liquidation: ACME not detected.")
 
             # 3. Print confirmation messages
                 for confirmation in output_confirmation:
