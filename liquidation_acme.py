@@ -2,11 +2,11 @@ import locale
 from datetime import datetime
 from tabulate import tabulate
 from websockets import exceptions
+from discord_server import send_to_acme_channel
 from acme_calculations import pnz_bigs, pnz_smalls
 from trading_tool_functions import json, get_scale, \
-    through_pnz_small, colour_print, price_within, fetch_data, \
-    MAGENTA, GREEN, CYAN, YELLOW, BLUE, BLACK, RED, \
-    UNDERLINE, BOLD, REVERSE
+    through_pnz_small, price_within, fetch_data
+
 
 import websockets
 import colorama
@@ -88,6 +88,9 @@ async def process_messages(liquidation_size_filter: int) -> None:
     """
     while True:
         if not messages.empty():
+
+            discord_message = []
+
             msg = messages.get()
             symbol = msg["s"]
             quantity = float(msg["q"])
@@ -111,29 +114,45 @@ async def process_messages(liquidation_size_filter: int) -> None:
                     zscore_vol = await volume_filter(symbol, vol_candle_lookback, vol_timeframes)
 
                     print('-' * 65)
+                    discord_message.append('-' * 65)
+
                     # 1. Print volume analysis
                     print(tabulate([['Z-Score'] + [zs for zs in zscore_vol.values()]],
                                    headers=['Timeframe'] + [zs for zs in zscore_vol.keys()],
                                    tablefmt="simple",
                                    floatfmt=".2f"))
+                    discord_message.append(str(tabulate([['Z-Score'] + [zs for zs in zscore_vol.values()]],
+                                                        headers=['Timeframe'] + [zs for zs in zscore_vol.keys()],
+                                                        tablefmt="simple",
+                                                        floatfmt=".2f")))
                     print('-' * 65)
+                    discord_message.append('-' * 65)
+
                     # 2. Print symbol info
                     print(tabulate(output_table, tablefmt="plain"))
-                    print('-' * 65)
+                    max_len = max(len(row[0]) for row in output_table)
+                    for row in output_table:
+                        discord_message.append(f'{row[0]:{max_len + 20}} {row[1]}')
+                    discord_message.append('-' * 65)
+
+                    send_to_acme_channel(discord_message)
 
                     if any(z_score > 2 for z_score in zscore_vol.values()) and liq_value > 4427:
-                        side = "SELL" if msg["S"] == "BUY" else "BUY"
-                        color = GREEN if side == "BUY" else RED
-                        output_confirmation.append("\n")
-                        output_confirmation.append(colour_print(f"{side} conditions are met",
-                                                                color, BOLD, UNDERLINE,
-                                                                return_message=True))
+                        side = "🟥 🟥 🟥 SELL 🟥 🟥 🟥" if msg["S"] == "BUY" else "🟩 🟩 🟩 BUY 🟩 🟩 🟩"
 
-                        output_confirmation.append("\n")
+                        output_confirmation.append(f"{side} conditions are met")
+                        discord_message.append(f"{side} conditions are met")
+                        discord_message.append('-' * 65)
+
+                        send_to_acme_channel(discord_message)
+
                 else:
                     output_confirmation.append("Liquidation: ACME not detected.")
+                    # discord_message.append("Liquidation: ACME not detected.")
+                    #
+                    # send_to_acme_channel(discord_message)
 
-                # 3. Print confirmation messages
+            # 3. Print confirmation messages
                 for confirmation in output_confirmation:
                     print(confirmation)
 
@@ -226,11 +245,6 @@ async def get_scaled_price(symbol: str) -> list:
 
 
 async def get_pnz(scaled_open: float, scaled_close: float) -> bool:
-    color_map = {
-        6: (MAGENTA, REVERSE), 5: (GREEN, REVERSE),
-        4: (CYAN, REVERSE), 3: (YELLOW, REVERSE),
-        2: (BLUE, REVERSE), 1: (BLACK, REVERSE)
-    }
 
     flag_pnz_sm = False
     seen_tups = set()
@@ -239,12 +253,12 @@ async def get_pnz(scaled_open: float, scaled_close: float) -> bool:
         if tup not in seen_tups and through_pnz_small([tup], scaled_open, scaled_close):
             seen_tups.add(tup)
             flag_pnz_sm = True
-            output_table.append([colour_print(f"ACME Small", REVERSE, return_message=True), tup])
+            output_table.append(["ACME Small", tup])
 
     for key in range(3, 6):
         for tup in pnz_bigs[key]:
             if price_within([tup], scaled_close):
-                output_table.append([colour_print(f"ACME Big {key}", *color_map[key], return_message=True), tup])
+                output_table.append([f"ACME Big {key}", tup])
                 return True
 
     return flag_pnz_sm
