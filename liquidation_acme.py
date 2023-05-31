@@ -254,6 +254,14 @@ async def get_scaled_price(symbol: str) -> list:
 
 async def get_pnz(scaled_open: float, scaled_close: float) -> bool:
 
+    emoji_map = {
+        1: "⬜",
+        3: "🟨",
+        4: "🟦",
+        5: "🟩",
+        6: "🟪",
+    }
+
     flag_pnz_sm = False
     seen_tups = set()
 
@@ -261,12 +269,12 @@ async def get_pnz(scaled_open: float, scaled_close: float) -> bool:
         if tup not in seen_tups and through_pnz_small([tup], scaled_open, scaled_close):
             seen_tups.add(tup)
             flag_pnz_sm = True
-            output_table.append(["ACME Small", tup])
+            output_table.append([f"ACME Small {emoji_map.get(1, '')}", tup])
 
     for key in range(3, 6):
         for tup in pnz_bigs[key]:
             if price_within([tup], scaled_close):
-                output_table.append([f"ACME Big {key}", tup])
+                output_table.append([f"ACME Big {key} {emoji_map.get(key, '')} ", tup])
                 return True
 
     return flag_pnz_sm
