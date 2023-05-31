@@ -26,9 +26,6 @@ conf = Config("config.yaml")
 last_calculated = {}  # dictionary to keep track of when each symbol was last calculated
 zscore_tables = {}
 
-# vol_timeframes = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h']
-# vol_candle_lookback = 27
-
 output_table = []
 output_confirmation = []
 
@@ -96,7 +93,9 @@ async def process_messages(liquidation_size_filter: int) -> None:
             price = float(msg["p"])
             liq_value = round(float(quantity * price), 2)
 
-            if liq_value > liquidation_size_filter:
+            if symbol in conf.excluded_symbols:
+                print(f"{symbol} Liquidation in excluded list.")
+            elif liq_value > liquidation_size_filter:
                 candle_open, candle_close, scaled_open, scaled_close = await get_scaled_price(symbol)
 
                 output_table.append(["Symbol", symbol])
@@ -134,7 +133,7 @@ async def process_messages(liquidation_size_filter: int) -> None:
 
                         output_confirmation.append("\n")
                 else:
-                    output_confirmation.append("Liquidation: ACME not detected.")
+                    output_confirmation.append(f" {symbol} Liquidation: ACME not detected.")
 
                 # 3. Print confirmation messages
                 for confirmation in output_confirmation:
