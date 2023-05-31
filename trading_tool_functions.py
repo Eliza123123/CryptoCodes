@@ -125,10 +125,6 @@ async def fetch_data(url: str, parameters: dict) -> dict:
     request. These can be used to customize the request based on the API's specifications. For example,
     parameters could be used to specify the data that you want to receive from the API.
 
-    :param headers: A dictionary of key-value pairs that will be included in the HTTP GET request headers.
-    These can be used to provide additional information to the server, such as authentication tokens or
-    specific content types.
-
     :return: A dictionary that represents the JSON content of the HTTP GET request's response. This dictionary
     can then be used in your program to interact with the data that the API returned.
 
