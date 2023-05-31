@@ -123,7 +123,7 @@ async def process_messages(liquidation_size_filter: int) -> None:
 
                     if any(z_score > 2 for z_score in zscore_vol.values()) and liq_value > 4427:
                         side = "Sell" if msg["S"] == "SELL" else "Buy"
-                        color = GREEN if msg["S"] == "SELL" else RED
+                        color = RED if msg["S"] == "SELL" else GREEN
                         output_confirmation.append("\n")
                         output_confirmation.append(colour_print(f"{side} conditions are met", color, BOLD, UNDERLINE, return_message=True))
                         output_confirmation.append("\n")
