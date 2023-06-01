@@ -12,7 +12,7 @@ from websockets import exceptions
 from config import Config
 from Lib import acme, exchange, discord
 
-locale.setlocale(locale.LC_MONETARY, '')
+locale.setlocale(locale.LC_MONETARY, 'en_US.UTF-8')
 messages = queue.Queue()
 conf = Config("config.yaml")
 
@@ -121,14 +121,13 @@ async def process_messages() -> None:
                         # Check if the symbol already exists in the trade_book
                         if symbol in trade_book:
                             # Append the new trade to the existing list
-                            trade_book[symbol].append(scaled_close)
+                            trade_book[symbol].append((scaled_close, side))
                         else:
                             # Create a new list for the symbol
-                            trade_book[symbol] = [scaled_close]
+                            trade_book[symbol] = [(scaled_close, side)]
 
                         if conf.discord_webhook_enabled:
                             discord.send_to_channel(zs_table, table, side)
-                            discord.send_trade_book(trade_book)
 
                 else:
                     output_confirmation.append(f"{symbol} Liquidation: ACME not detected.")
@@ -236,10 +235,38 @@ async def price_tracker(open_trades_book: dict) -> dict:
             'limit': 1,
         }
         data = await exchange.fetch_kline(parameters)
-        live_price = float(data[0][4])
-        open_market_prices[symbol] = live_price  # add live price to the dictionary
+        candle_open = float(data[0][1])
+        candle_close = float(data[0][4])
+        scale_factor = acme.get_scale(min(candle_open, candle_close))
+        open_market_prices[symbol] = candle_close / scale_factor  # add live price to the dictionary
 
     return open_market_prices
+
+
+async def trade_performances(open_trades_book: dict, open_market_prices: dict) -> dict:
+    trade_performance = {}
+
+    for symbol in open_trades_book.keys():
+        trade_performance[symbol] = {}
+        entry_number = 1
+
+        for entry in open_trades_book[symbol]:
+            entry_price, side = entry
+            live_price = open_market_prices[symbol]
+            if side == "🟩 🟩 🟩 BUY 🟩 🟩 🟩":
+                percentage_gain = ((live_price - entry_price) / entry_price) * 100
+            else:
+                percentage_gain = ((entry_price - live_price) / entry_price) * 100
+
+            trade_performance[symbol][f'entry_{entry_number}'] = {
+                'entry_price': entry_price,
+                'market_price': live_price,
+                'percentage_gain': percentage_gain,
+                'side': side
+            }
+            entry_number += 1
+
+    return trade_performance
 
 
 async def get_pnz(scaled_open: float, scaled_close: float) -> bool:

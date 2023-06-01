@@ -48,8 +48,14 @@ class Config:
                     self.discord_webhook = config.get(
                         "discord_webhook"
                     )
+                    self.discord_webhook_2 = config.get(
+                        "discord_webhook_2"
+                    )
                     self.discord_webhook_enabled = config.get(
                         "discord_webhook_enabled"
+                    )
+                    self.discord_webhook_2_enabled = config.get(
+                        "discord_webhook_2_enabled"
                     )
                     self.filters = config.get(
                         "filters"
