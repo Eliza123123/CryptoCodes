@@ -1,35 +1,33 @@
+import asyncio
+import json
+import locale
+import queue
+import statistics
 from datetime import datetime
+
+import websockets
 from tabulate import tabulate
 from websockets import exceptions
-from discord_server import send_to_acme_channel
-from acme_calculations import pnz_bigs, pnz_smalls
-from trading_tool_functions import json, get_scale, \
-    through_pnz_small, price_within, fetch_data
 
 from config import Config
-
-import locale
-import websockets
-import queue
-import asyncio
-import statistics
-
-websocket_uri = "wss://fstream.binance.com/ws/!forceOrder@arr"
-url = 'https://fapi.binance.com/fapi/v1/klines'
+from lib import acme, exchange, discord
 
 locale.setlocale(locale.LC_MONETARY, '')
 messages = queue.Queue()
 conf = Config("config.yaml")
 
-last_calculated = {}  # dictionary to keep track of when each symbol was last calculated
+# Initiate Acme
+acme.init()
+# Keep track of when each symbol was last calculated
+cache = {}
+# Store the Z-Score timeframes
 zscore_tables = {}
-
+# Output formatting for tables
 output_table = []
 output_confirmation = []
-output_discord = []
 
 
-async def binance_liquidations(uri: str) -> None:
+async def binance_liquidations() -> None:
     """
     This is an asynchronous coroutine that establishes a connection with the Binance
     cryptocurrency exchange's liquidation data websocket server and continuously monitors
@@ -48,7 +46,7 @@ async def binance_liquidations(uri: str) -> None:
     """
     while True:  # Add a loop for automatic reconnection
         try:
-            async with websockets.connect(uri, ping_interval=20, ping_timeout=10) as websocket:
+            async with websockets.connect("wss://fstream.binance.com/ws/!forceOrder@arr", ping_interval=20, ping_timeout=10) as websocket:
                 while True:
                     msg = await websocket.recv()
                     if msg is None:
@@ -63,7 +61,7 @@ async def binance_liquidations(uri: str) -> None:
             await asyncio.sleep(1)  # Wait before reconnecting
 
 
-async def process_messages(liquidation_size_filter: int) -> None:
+async def process_messages() -> None:
     """
     This function is an asynchronous coroutine that continuously monitors and processes messages
     from a global queue. The messages represent cryptocurrency liquidation events.
@@ -94,7 +92,8 @@ async def process_messages(liquidation_size_filter: int) -> None:
 
             if symbol in conf.excluded_symbols:
                 print(f"{symbol} Liquidation in excluded list.")
-            elif liq_value > liquidation_size_filter:
+
+            elif liq_value > conf.filters["liquidation"]:
                 candle_open, candle_close, scaled_open, scaled_close = await get_scaled_price(symbol)
 
                 output_table.append(["Symbol", symbol])
@@ -125,15 +124,15 @@ async def process_messages(liquidation_size_filter: int) -> None:
                     print(table)
                     print('-' * 65)
 
-                    if any(z_score > conf.filters["zscore"] for z_score in zscore_vol.values()) and liq_value > conf.filters["liquidation"]:
+                    if any(z_score > conf.filters["zscore"] for z_score in zscore_vol.values()):
                         side = "🟥 🟥 🟥 SELL 🟥 🟥 🟥" if msg["S"] == "BUY" else "🟩 🟩 🟩 BUY 🟩 🟩 🟩"
                         output_confirmation.append(f"{side} conditions are met")
 
                         if conf.discord_webhook_enabled:
-                            send_to_acme_channel(zs_table, table, side)
+                            discord.send_to_channel(zs_table, table, side)
 
                 else:
-                    output_confirmation.append(f" {symbol} Liquidation: ACME not detected.")
+                    output_confirmation.append(f"{symbol} Liquidation: ACME not detected.")
 
                 # 3. Print confirmation messages
                 for confirmation in output_confirmation:
@@ -170,7 +169,7 @@ async def volume_filter(symbol: str, n: int, timeframes: list) -> dict:
              for that timeframe.
     """
 
-    last_time = last_calculated.get(symbol)
+    last_time = cache.get(symbol)
     if last_time is not None:
         # If it was calculated less than 5 minutes ago, print the stored Z-score table and return
         if (datetime.now() - last_time).seconds < 5 * 60:
@@ -184,7 +183,7 @@ async def volume_filter(symbol: str, n: int, timeframes: list) -> dict:
             'interval': timeframe,
             'limit': n,
         }
-        tasks.append(fetch_data(url, parameters))
+        tasks.append(exchange.fetch_kline(parameters))
 
     # Gather tasks and run them concurrently
     responses = await asyncio.gather(*tasks)
@@ -205,7 +204,7 @@ async def volume_filter(symbol: str, n: int, timeframes: list) -> dict:
     zscore_tables[symbol] = zscores  # store the Z-scores
 
     # Update the time of the last calculation for this symbol
-    last_calculated[symbol] = datetime.now()
+    cache[symbol] = datetime.now()
 
     return zscores  # return the Z-scores
 
@@ -216,14 +215,14 @@ async def get_scaled_price(symbol: str) -> list:
         'interval': '1m',
         'limit': 1,
     }
-    data = await fetch_data(url, parameters)
+    data = await exchange.fetch_kline(parameters)
 
     if not data:
         return []
 
     candle_open = float(data[0][1])
     candle_close = float(data[0][4])
-    scale_factor = get_scale(min(candle_open, candle_close))
+    scale_factor = acme.get_scale(min(candle_open, candle_close))
     return [candle_open, candle_close, candle_open / scale_factor, candle_close / scale_factor]
 
 
@@ -239,15 +238,15 @@ async def get_pnz(scaled_open: float, scaled_close: float) -> bool:
     flag_pnz_sm = False
     seen_tups = set()
 
-    for tup in pnz_smalls[1]:
-        if tup not in seen_tups and through_pnz_small([tup], scaled_open, scaled_close):
+    for tup in acme.pnz_sm[1]:
+        if tup not in seen_tups and acme.through_pnz_small([tup], scaled_open, scaled_close):
             seen_tups.add(tup)
             flag_pnz_sm = True
             output_table.append([f"ACME Small {emoji_map.get(1, '')}", tup])
 
     for key in range(3, 6):
-        for tup in pnz_bigs[key]:
-            if price_within([tup], scaled_close):
+        for tup in acme.pnz_lg[key]:
+            if acme.price_within([tup], scaled_close):
                 output_table.append([f"ACME Big {key} {emoji_map.get(key, '')} ", tup])
                 return True
 

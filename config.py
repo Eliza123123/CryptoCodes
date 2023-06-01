@@ -7,7 +7,7 @@ CONFIG_ERROR_MSG: str = "Configuration file incorrectly formatted"
 
 class Filters(TypedDict):
     """
-    download_all_associated_pairs config option dictionary hint typing.
+    Filters config option dictionary hint typing.
     """
 
     liquidation: float

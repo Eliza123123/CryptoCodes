@@ -1,11 +1,11 @@
-from config import Config
-
 import requests
+
+from config import Config
 
 conf = Config("config.yaml")
 
 
-def send_to_acme_channel(zs_table, table, confirmation):
+def send_to_channel(zs_table, table, confirmation):
     content = ("\n" + "-" * 65 + "\n").join([zs_table, table])
 
     result = requests.post(conf.discord_webhook, json={

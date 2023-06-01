@@ -1,5 +1,6 @@
-from liquidation_acme import binance_liquidations, websocket_uri, process_messages
 import asyncio
+
+from liquidation_acme import binance_liquidations, process_messages
 
 
 async def main():
@@ -7,8 +8,8 @@ async def main():
     Executes the main program flow
     """
     tasks = [
-        binance_liquidations(websocket_uri),
-        process_messages(liquidation_size_filter=1),
+        binance_liquidations(),
+        process_messages()
     ]
 
     await asyncio.gather(*tasks)
