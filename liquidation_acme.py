@@ -10,7 +10,7 @@ from tabulate import tabulate
 from websockets import exceptions
 
 from config import Config
-from lib import acme, exchange, discord
+from Lib import acme, exchange, discord
 
 locale.setlocale(locale.LC_MONETARY, '')
 messages = queue.Queue()
@@ -39,14 +39,11 @@ async def binance_liquidations() -> None:
     Each message received from the server is a JSON string representing a liquidation
     event. The function loads the JSON string into a Python dictionary and puts it into
     a global queue for further processing.
-
-    :param uri: The Uniform Resource Identifier (URI) of the websocket server.
-    :return None: The function runs indefinitely, receiving messages and putting them in the
-        global queue.
     """
     while True:  # Add a loop for automatic reconnection
         try:
-            async with websockets.connect("wss://fstream.binance.com/ws/!forceOrder@arr", ping_interval=20, ping_timeout=10) as websocket:
+            async with websockets.connect("wss://fstream.binance.com/ws/!forceOrder@arr",
+                                          ping_interval=20, ping_timeout=10) as websocket:
                 while True:
                     msg = await websocket.recv()
                     if msg is None:
@@ -70,17 +67,8 @@ async def process_messages() -> None:
     The function pulls messages from the queue, extracts the relevant details (such as symbol,
     quantity, and price), and formats this data into a human-readable text block.
 
-    If the calculated USD value of the liquidation event (quantity * price) exceeds the
-    'liquidation_size_filter', the function forwards the symbol and the formatted message to
-    the 'process_symbols' function for further processing.
-
     When the queue is empty, the function waits for a short period (0.01 seconds) before checking
     the queue again to avoid excessive CPU usage.
-
-    :param liquidation_size_filter: This value acts as a filter threshold. Liquidation events
-        with a calculated USD value below this threshold are ignored.
-    :return None: The function runs indefinitely, processing messages and passing them to
-        'process_symbols' as needed.
     """
     while True:
         if not messages.empty():
