@@ -1,5 +1,5 @@
 # Boolean enable/disable
-discord_webhook_enabled: true
+discord_webhook_enabled: false
 # Channel webhook to send confirmed entries
 discord_webhook: ''
 
