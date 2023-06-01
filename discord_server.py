@@ -1,15 +1,17 @@
-from discord_webhook import DiscordWebhook
+import requests
 
+URL = 'https://discord.com/api/webhooks/1113680454193774653/3f_xCJOG_0ehKHl4neTWyrNXoRd4yj-3sCo7JSqeqU2UwCwF0czwuY_RmHPINlUTGSGY'
 
-def send_to_acme_channel(discord_message):
-    content = ""
-    for item in discord_message:
-        if isinstance(item, list):
-            content += ' '.join([str(i) for i in item]) + '\n'
-        else:
-            content += item + '\n'
-    webhook = DiscordWebhook(url='https://discord.com/api/webhooks/1113461647399'
-                                 '452732/F7NZ2hduBuF1GjUYzI1PjPkjMs_BzrtoUNTp2yq'
-                                 'Ksr4WP6lWe7EJH-x1-p9HrQegRt4I'
-                             , content=content)
-    response = webhook.execute()
+def send_to_acme_channel(zs_table, table, confirmation):
+
+    content = ("\n" + "-" * 65 + "\n").join([zs_table, table])
+
+    result = requests.post(URL, json={
+        "content": f"```{content}\n\n{confirmation}```",
+        "username": "ACME"
+    })
+
+    try:
+        result.raise_for_status()
+    except requests.exceptions.HTTPError as err:
+        print(err)

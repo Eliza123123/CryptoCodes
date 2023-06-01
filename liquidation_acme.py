@@ -1,7 +1,7 @@
 from datetime import datetime
 from tabulate import tabulate
 from websockets import exceptions
-from discord_server import send_to_acme_channel, format_message
+from discord_server import send_to_acme_channel
 from acme_calculations import pnz_bigs, pnz_smalls
 from trading_tool_functions import json, get_scale, \
     through_pnz_small, price_within, fetch_data
@@ -10,7 +10,6 @@ from config import Config
 
 import locale
 import websockets
-import colorama
 import queue
 import asyncio
 import statistics
@@ -18,7 +17,6 @@ import statistics
 websocket_uri = "wss://fstream.binance.com/ws/!forceOrder@arr"
 url = 'https://fapi.binance.com/fapi/v1/klines'
 
-colorama.init()
 locale.setlocale(locale.LC_MONETARY, '')
 messages = queue.Queue()
 conf = Config("config.yaml")
@@ -28,6 +26,7 @@ zscore_tables = {}
 
 output_table = []
 output_confirmation = []
+output_discord = []
 
 
 async def binance_liquidations(uri: str) -> None:
@@ -87,9 +86,6 @@ async def process_messages(liquidation_size_filter: int) -> None:
     """
     while True:
         if not messages.empty():
-
-            discord_message = []
-
             msg = messages.get()
             symbol = msg["s"]
             quantity = float(msg["q"])
@@ -115,43 +111,25 @@ async def process_messages(liquidation_size_filter: int) -> None:
                     zscore_vol = await volume_filter(symbol, conf.zscore_lookback, conf.zscore_timeframes)
 
                     print('-' * 65)
-                    discord_message.append('-' * 65)
 
                     # 1. Print volume analysis
-                    print(tabulate([['Z-Score'] + [zs for zs in zscore_vol.values()]],
+                    zs_table = tabulate([['Z-Score'] + [zs for zs in zscore_vol.values()]],
                                    headers=['Timeframe'] + [zs for zs in zscore_vol.keys()],
                                    tablefmt="simple",
-                                   floatfmt=".2f"))
-                    discord_message.append(str(tabulate([['Z-Score'] + [zs for zs in zscore_vol.values()]],
-                                                        headers=['Timeframe'] + [zs for zs in zscore_vol.keys()],
-                                                        tablefmt="simple",
-                                                        floatfmt=".2f")))
+                                   floatfmt=".2f")
+                    print(zs_table)
                     print('-' * 65)
-                    discord_message.append('-' * 65)
 
                     # 2. Print symbol info
-                    print(tabulate(output_table, tablefmt="plain"))
-                    max_len = max(len(row[0]) for row in output_table)
-                    for row in output_table:
-                        discord_message.append(f'{row[0]:{max_len + 20}} {row[1]}')
-                    discord_message.append('-' * 65)
-
-                    send_to_acme_channel(discord_message)
+                    table = tabulate(output_table, tablefmt="plain")
+                    print(table)
+                    print('-' * 65)
 
                     if any(z_score > conf.filters["zscore"] for z_score in zscore_vol.values()) and liq_value > conf.filters["liquidation"]:
                         side = "🟥 🟥 🟥 SELL 🟥 🟥 🟥" if msg["S"] == "BUY" else "🟩 🟩 🟩 BUY 🟩 🟩 🟩"
-
                         output_confirmation.append(f"{side} conditions are met")
-                        discord_message.append(f"{side} conditions are met")
-                        discord_message.append('-' * 65)
 
-
-                    if any(z_score > conf.filters["zscore"] for z_score in zscore_vol.values()) \
-                            and liq_value > conf.filters["liquidation"]:
-
-                        side = "SELL" if msg["S"] == "BUY" else "BUY"
-                        output_confirmation.append("\n")
-                        output_confirmation.append(f"{side} conditions are met")
+                        send_to_acme_channel(zs_table, table, side)
 
                 else:
                     output_confirmation.append(f" {symbol} Liquidation: ACME not detected.")
@@ -159,9 +137,6 @@ async def process_messages(liquidation_size_filter: int) -> None:
                 # 3. Print confirmation messages
                 for confirmation in output_confirmation:
                     print(confirmation)
-
-                # 4. Send to Discord
-                send_to_acme_channel(discord_message)
 
                 # Reset tables
                 output_table.clear()
