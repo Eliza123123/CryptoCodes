@@ -25,6 +25,8 @@ zscore_tables = {}
 # Output formatting for tables
 output_table = []
 output_confirmation = []
+# Keep track of open trades
+trade_book = {}
 
 
 async def binance_liquidations() -> None:
@@ -116,8 +118,17 @@ async def process_messages() -> None:
                         side = "🟥 🟥 🟥 SELL 🟥 🟥 🟥" if msg["S"] == "BUY" else "🟩 🟩 🟩 BUY 🟩 🟩 🟩"
                         output_confirmation.append(f"{side} conditions are met")
 
+                        # Check if the symbol already exists in the trade_book
+                        if symbol in trade_book:
+                            # Append the new trade to the existing list
+                            trade_book[symbol].append(scaled_close)
+                        else:
+                            # Create a new list for the symbol
+                            trade_book[symbol] = [scaled_close]
+
                         if conf.discord_webhook_enabled:
                             discord.send_to_channel(zs_table, table, side)
+                            discord.send_trade_book(trade_book)
 
                 else:
                     output_confirmation.append(f"{symbol} Liquidation: ACME not detected.")
