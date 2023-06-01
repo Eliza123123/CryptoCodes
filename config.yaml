@@ -1,7 +1,7 @@
 # Boolean enable/disable
 discord_webhook_enabled: true
 # Channel webhook to send confirmed entries
-discord_webhook: 'https://discord.com/api/webhooks/1113680454193774653/3f_xCJOG_0ehKHl4neTWyrNXoRd4yj-3sCo7JSqeqU2UwCwF0czwuY_RmHPINlUTGSGY'
+discord_webhook: ''
 
 filters:
   # liquidation to exceed
