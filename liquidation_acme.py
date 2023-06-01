@@ -225,6 +225,23 @@ async def get_scaled_price(symbol: str) -> list:
     return [candle_open, candle_close, candle_open / scale_factor, candle_close / scale_factor]
 
 
+async def price_tracker(open_trades_book: dict) -> dict:
+
+    open_market_prices = {}
+
+    for symbol, average_price in open_trades_book.items():
+        parameters = {
+            'symbol': symbol,
+            'interval': '1m',
+            'limit': 1,
+        }
+        data = await exchange.fetch_kline(parameters)
+        live_price = float(data[0][4])
+        open_market_prices[symbol] = live_price  # add live price to the dictionary
+
+    return open_market_prices
+
+
 async def get_pnz(scaled_open: float, scaled_close: float) -> bool:
     emoji_map = {
         1: "⬜",
