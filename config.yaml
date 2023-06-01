@@ -26,4 +26,4 @@ zscore_lookback: 27
 
 # Exclude symbols from analysis
 excluded_symbols:
-  - KEYUSDT
+  - NONEUSDT
