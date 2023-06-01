@@ -45,6 +45,12 @@ class Config:
             with open(config_file, "r") as stream:
                 try:
                     config = yaml.load(stream, Loader=yaml.SafeLoader)
+                    self.discord_webhook = config.get(
+                        "discord_webhook"
+                    )
+                    self.discord_webhook_enabled = config.get(
+                        "discord_webhook_enabled"
+                    )
                     self.filters = config.get(
                         "filters"
                     )
@@ -70,6 +76,8 @@ class Config:
         """
         current_datetime = datetime.datetime.utcnow()
         try:
+            if self.discord_webhook_enabled and self.discord_webhook is None:
+                raise ValueError("Please provide a discord webhook URL.")
             if not self.filters.get("liquidation"):
                 raise ValueError("Please provide a liquidations filter value.")
             if not self.filters.get("zscore"):

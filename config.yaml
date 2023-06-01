@@ -1,3 +1,7 @@
+# Boolean enable/disable
+discord_webhook_enabled: true
+# Channel webhook to send confirmed entries
+discord_webhook: ''
 
 filters:
   # liquidation to exceed

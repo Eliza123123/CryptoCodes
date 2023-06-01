@@ -114,9 +114,9 @@ async def process_messages(liquidation_size_filter: int) -> None:
 
                     # 1. Print volume analysis
                     zs_table = tabulate([['Z-Score'] + [zs for zs in zscore_vol.values()]],
-                                   headers=['Timeframe'] + [zs for zs in zscore_vol.keys()],
-                                   tablefmt="simple",
-                                   floatfmt=".2f")
+                                        headers=['Timeframe'] + [zs for zs in zscore_vol.keys()],
+                                        tablefmt="simple",
+                                        floatfmt=".2f")
                     print(zs_table)
                     print('-' * 65)
 
@@ -129,7 +129,8 @@ async def process_messages(liquidation_size_filter: int) -> None:
                         side = "🟥 🟥 🟥 SELL 🟥 🟥 🟥" if msg["S"] == "BUY" else "🟩 🟩 🟩 BUY 🟩 🟩 🟩"
                         output_confirmation.append(f"{side} conditions are met")
 
-                        send_to_acme_channel(zs_table, table, side)
+                        if conf.discord_webhook_enabled:
+                            send_to_acme_channel(zs_table, table, side)
 
                 else:
                     output_confirmation.append(f" {symbol} Liquidation: ACME not detected.")
@@ -227,7 +228,6 @@ async def get_scaled_price(symbol: str) -> list:
 
 
 async def get_pnz(scaled_open: float, scaled_close: float) -> bool:
-
     emoji_map = {
         1: "⬜",
         3: "🟨",
