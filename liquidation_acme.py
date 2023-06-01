@@ -1,7 +1,7 @@
 from datetime import datetime
 from tabulate import tabulate
 from websockets import exceptions
-from discord_server import send_to_acme_channel
+from discord_server import send_to_acme_channel, format_message
 from acme_calculations import pnz_bigs, pnz_smalls
 from trading_tool_functions import json, get_scale, \
     through_pnz_small, price_within, fetch_data
@@ -138,14 +138,14 @@ async def process_messages(liquidation_size_filter: int) -> None:
 
                     send_to_acme_channel(discord_message)
 
-                    if any(z_score > 2 for z_score in zscore_vol.values()) and liq_value > 4427:
+                    if any(z_score > conf.filters["zscore"] for z_score in zscore_vol.values()) and liq_value > conf.filters["liquidation"]:
                         side = "🟥 🟥 🟥 SELL 🟥 🟥 🟥" if msg["S"] == "BUY" else "🟩 🟩 🟩 BUY 🟩 🟩 🟩"
 
                         output_confirmation.append(f"{side} conditions are met")
                         discord_message.append(f"{side} conditions are met")
                         discord_message.append('-' * 65)
 
-                        send_to_acme_channel(discord_message)
+
                     if any(z_score > conf.filters["zscore"] for z_score in zscore_vol.values()) \
                             and liq_value > conf.filters["liquidation"]:
 
@@ -154,15 +154,14 @@ async def process_messages(liquidation_size_filter: int) -> None:
                         output_confirmation.append(f"{side} conditions are met")
 
                 else:
-                    output_confirmation.append("Liquidation: ACME not detected.")
-                    # discord_message.append("Liquidation: ACME not detected.")
-                    #
-                    # send_to_acme_channel(discord_message)
                     output_confirmation.append(f" {symbol} Liquidation: ACME not detected.")
 
-            # 3. Print confirmation messages
+                # 3. Print confirmation messages
                 for confirmation in output_confirmation:
                     print(confirmation)
+
+                # 4. Send to Discord
+                send_to_acme_channel(discord_message)
 
                 # Reset tables
                 output_table.clear()
