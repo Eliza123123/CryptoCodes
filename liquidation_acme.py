@@ -29,6 +29,7 @@ output_confirmation = []
 trade_book = {}
 # Keep track of complete trades
 
+
 async def binance_liquidations() -> None:
     """
     This is an asynchronous coroutine that establishes a connection with the Binance
@@ -144,36 +145,11 @@ async def process_messages() -> None:
 
 
 async def volume_filter(symbol: str, n: int, timeframes: list) -> dict:
-    """
-    This function calculates the Z-scores of trading volumes for multiple timeframes of a given symbol
-    and displays them in a tabulated format.
-
-    It first checks if the Z-scores for the symbol were calculated within the last 5 minutes. If they were,
-    it prints the stored Z-scores and returns them. If not, it sends requests to fetch the latest trading data
-    for each timeframe and calculates the Z-scores.
-
-    The Z-scores are calculated as follows:
-    Z-score = (current_volume - mean_volume) / standard_deviation_volume
-
-    Once calculated, the Z-scores are printed in a tabulated format and stored for later use.
-
-    This function leverages asyncio.gather() to send multiple requests concurrently, improving the speed
-    and efficiency of the function.
-
-    :param symbol: The trading symbol to fetch data for.
-    :param n: The number of latest data points to fetch for each timeframe.
-    :param timeframes: Variable length argument, each specifying a timeframe to fetch data for.
-    :return: A dictionary where each key is a timeframe and its corresponding value is the Z-score
-             for that timeframe.
-    """
-
     last_time = cache.get(symbol)
     if last_time is not None:
-        # If it was calculated less than 5 minutes ago, print the stored Z-score table and return
         if (datetime.now() - last_time).seconds < 5 * 60:
-            return zscore_tables[symbol]  # return the previously stored Z-scores as a dict
+            return zscore_tables[symbol]
 
-    # Create a list of tasks to run concurrently
     tasks = []
     for timeframe in timeframes:
         parameters = {
@@ -183,28 +159,25 @@ async def volume_filter(symbol: str, n: int, timeframes: list) -> dict:
         }
         tasks.append(exchange.fetch_kline(parameters))
 
-    # Gather tasks and run them concurrently
     responses = await asyncio.gather(*tasks)
 
-    # Prepare a dictionary to store Z-scores for each timeframe
     zscores = {}
-
     for response, timeframe in zip(responses, timeframes):
         volumes = [float(bar[5]) for bar in response]
-        mean_volume = statistics.mean(volumes)
-        std_volume = statistics.stdev(volumes)
-        current_volume = volumes[-2]  # last complete candle
-        z_score = (current_volume - mean_volume) / std_volume
+        try:
+            mean_volume = statistics.mean(volumes)
+            std_volume = statistics.stdev(volumes)
+            current_volume = volumes[-2]
+            z_score = (current_volume - mean_volume) / std_volume
+            zscores[timeframe] = z_score
+        except statistics.StatisticsError:
+            print(f"Not enough data points to calculate standard deviation for {symbol} in {timeframe} timeframe.")
+            zscores[timeframe] = "new market"  # using "new market" as the placeholder for new/insufficient data
 
-        # Store the Z-score for this timeframe in the dictionary
-        zscores[timeframe] = z_score
-
-    zscore_tables[symbol] = zscores  # store the Z-scores
-
-    # Update the time of the last calculation for this symbol
+    zscore_tables[symbol] = zscores
     cache[symbol] = datetime.now()
 
-    return zscores  # return the Z-scores
+    return zscores
 
 
 async def get_scaled_price(symbol: str) -> list:
