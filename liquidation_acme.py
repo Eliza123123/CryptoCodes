@@ -265,6 +265,38 @@ async def trade_performances(open_trades_book: dict, open_market_prices: dict) -
                 'side': side
             }
             entry_number += 1
+###########################################################################################
+#DEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGING
+    # Debugging percentage_gain result for scenario
+    # where an asset is bought at 10.2 but price falls to 9.95
+    candle_open = 10.2
+
+    current_minute = datetime.now().minute
+
+    # Check if the minute is odd or even
+    if current_minute % 2 == 0:
+        candle_close = 9.95
+    else:
+        candle_close = 10.25
+
+    scale_factor = acme.get_scale(min(candle_open, candle_close))
+    lp = candle_close / scale_factor
+
+    ep = 10.2
+
+    debug_percentage_gain = ((lp - ep) / ep) * 100
+
+    if 'FUCKWITUSDT' not in trade_performance:
+        trade_performance['FUCKWITUSDT'] = {}
+
+    trade_performance['FUCKWITUSDT']['entry_1'] = {
+        'entry_price': 10.2,
+        'market_price': lp,
+        'debug_percentage_gain': debug_percentage_gain,
+        'side': '🟩 🟩 🟩 BUY 🟩 🟩 🟩'
+    }
+#DEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGING
+###########################################################################################
 
     return trade_performance
 
