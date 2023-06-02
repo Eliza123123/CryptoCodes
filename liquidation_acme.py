@@ -27,7 +27,7 @@ output_table = []
 output_confirmation = []
 # Keep track of open trades
 trade_book = {}
-
+# Keep track of complete trades
 
 async def binance_liquidations() -> None:
     """
@@ -269,36 +269,61 @@ async def trade_performances(open_trades_book: dict, open_market_prices: dict) -
 #DEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGING
     # Debugging percentage_gain result for scenario
     # where an asset is bought at 10.2 but price falls to 9.95
-    candle_open = 10.2
-
-    current_minute = datetime.now().minute
-
-    # Check if the minute is odd or even
-    if current_minute % 2 == 0:
-        candle_close = 9.95
-    else:
-        candle_close = 10.25
-
-    scale_factor = acme.get_scale(min(candle_open, candle_close))
-    lp = candle_close / scale_factor
-
-    ep = 10.2
-
-    debug_percentage_gain = ((lp - ep) / ep) * 100
-
-    if 'FUCKWITUSDT' not in trade_performance:
-        trade_performance['FUCKWITUSDT'] = {}
-
-    trade_performance['FUCKWITUSDT']['entry_1'] = {
-        'entry_price': 10.2,
-        'market_price': lp,
-        'debug_percentage_gain': debug_percentage_gain,
-        'side': '🟩 🟩 🟩 BUY 🟩 🟩 🟩'
-    }
+    # candle_open = 10.2
+    #
+    # current_minute = datetime.now().minute
+    #
+    # # Check if the minute is odd or even
+    # if current_minute % 2 == 0:
+    #     candle_close = 9.95
+    # else:
+    #     candle_close = 10.25
+    #
+    # scale_factor = acme.get_scale(min(candle_open, candle_close))
+    # lp = candle_close / scale_factor
+    #
+    # ep = 10.2
+    #
+    # debug_percentage_gain = ((lp - ep) / ep) * 100
+    #
+    # if 'FUCKWITUSDT' not in trade_performance:
+    #     trade_performance['FUCKWITUSDT'] = {}
+    #
+    # trade_performance['FUCKWITUSDT']['entry_1'] = {
+    #     'entry_price': 10.2,
+    #     'market_price': lp,
+    #     'debug_percentage_gain': debug_percentage_gain,
+    #     'side': '🟩 🟩 🟩 BUY 🟩 🟩 🟩'
+    # }
 #DEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGING
 ###########################################################################################
 
     return trade_performance
+
+
+async def market_exit(take_profit_percent: float, stop_loss_percent: float,
+                      open_trades_book: dict, open_market_prices: dict):
+
+    # calculate performances
+    performances_dict = await trade_performances(open_trades_book, open_market_prices)
+
+    for symbol, performances in performances_dict.items():
+        for entry, performance in performances.items():
+            percentage_gain = performance['percentage_gain']
+
+            # Check for either take profit or stop loss
+            if percentage_gain >= take_profit_percent or percentage_gain <= -stop_loss_percent:
+                # Remove the corresponding entry from the open trades
+                # Note: entry is in format 'entry_{entry_number}'
+                entry_number = int(entry.split('_')[1]) - 1
+                del open_trades_book[symbol][entry_number]
+
+    # After deleting some entries, clean up any symbols that no longer have trades
+    symbols_to_delete = [symbol for symbol, trades in open_trades_book.items() if len(trades) == 0]
+    for symbol in symbols_to_delete:
+        del open_trades_book[symbol]
+
+    return open_trades_book
 
 
 async def get_pnz(scaled_open: float, scaled_close: float) -> bool:
