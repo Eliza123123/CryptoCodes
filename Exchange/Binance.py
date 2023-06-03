@@ -1,5 +1,6 @@
 import asyncio
 import json
+import websockets
 
 from requests import get
 from websockets import exceptions, connect
@@ -11,7 +12,7 @@ class Websocket:
     """
 
     id: int
-    websocket: connect
+    websocket: websockets.connect
     queue: asyncio.Queue
     queue_subscribe: asyncio.Queue
 
@@ -20,6 +21,7 @@ class Websocket:
         self.queue_liquidation = asyncio.Queue()
         self.queue_kline = asyncio.Queue()
         self.queue_subscribe = asyncio.Queue()
+        self.stream_subscriptions = []
 
     def subscribe(self, symbols: list) -> None:
         """
@@ -30,11 +32,13 @@ class Websocket:
         :return:
         :rtype:
         """
+        subs = [f"{symbol}@kline_{timeframe}" for symbol, timeframe in symbols]
         self.queue_subscribe.put_nowait({
             "method": "SUBSCRIBE",
-            "params": [f"{symbol}@kline_{timeframe}" for symbol, timeframe in symbols],
+            "params": subs,
             "id": 2
         })
+        self.stream_subscriptions = self.stream_subscriptions + subs
 
     def unsubscribe(self, symbols: list) -> None:
         """
@@ -82,9 +86,13 @@ class Websocket:
                         print("Kline stream subscribed")
                     elif m["result"] is None and m['id'] == 3:
                         print("Kline stream unsubscribed")
-            except exceptions.ConnectionClosedError as e:
+            except exceptions.ConnectionClosed as e:
                 print(f"Connection closed unexpectedly: {e}. Retrying connection...")
-                self.websocket = await connect(self.wss)
+                await asyncio.sleep(1)
+                self.websocket = await connect(self.wss, ping_interval=20, ping_timeout=10)
+                self.subscribe(self.subscription_list)
+                print("Connected reconnected successfully")
+                continue
 
     async def _stream_subscription(self):
         while True:
@@ -102,7 +110,7 @@ class Websocket:
             await fn(message)
 
     async def stream(self):
-        self.websocket = await connect(self.wss)
+        self.websocket = await connect(self.wss, ping_interval=20, ping_timeout=10)
         await asyncio.gather(self._websocket_stream(), self._stream_subscription())
 
 
