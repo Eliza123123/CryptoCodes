@@ -6,7 +6,7 @@ discord_webhook: 'https://discord.com/api/webhooks/1113775631243694100/3rsIS9y4f
 discord_webhook_2: 'https://discord.com/api/webhooks/1113921479294324746/jxDojPwSw6Y4xKkLD4KtORWsMI_fLfDqUb9amXmxLxm3MwVcehFXbJpA8SuKk3D1sqKA'
 
 # Send trade book delay (seconds)
-trade_book_wait: 20
+trade_book_wait: 3
 
 filters:
   # liquidation to exceed
