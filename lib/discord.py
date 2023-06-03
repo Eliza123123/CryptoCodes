@@ -24,19 +24,26 @@ def send_to_channel(zs_table, table, confirmation) -> None:
 
 def send_trade_book(book) -> None:
     """
-    send_trade_book takes a dictionary and builds a ascii table, open percent profit summary and sends to discord.
+    send_trade_book takes a dictionary and builds an ascii table, open percent profit summary and sends to discord.
 
     :param book: Symbol as key, book details as value
     :type book: Dictionary
     :return: None
     :rtype:
     """
-    # todo Fix possible bug here with hardcoded list index
-    net_open_perc = sum([[i for i in n.values()][5] for n in book.values()])
+    # Initialize a variable for net open percentage
+    net_open_perc = 0
+
+    # Iterate over each symbol and its trades in the book
+    for symbol, trades in book.items():
+        for trade in trades:
+            # Calculate net open percent
+            net_open_perc += trade['perc']
+
     net_open_perc_emoji = '🟩🟩🟩' if net_open_perc > 0 else '🟥🟥🟥' if net_open_perc < 0 else '🟧🟧🟧'
 
     lines = [
-        tabulate([[i for i in j.values()] for i, j in [n for n in book.items()]],
+        tabulate([[i for i in j.values()] for symbol, trades in book.items() for j in trades],
                  headers=["Symbol", "Side", "Entry Price", "Entry Timestamp", "Market Price", "Percent Gain"],
                  tablefmt="simple", floatfmt=".2f"),
         "-" * 65,
