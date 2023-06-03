@@ -62,7 +62,4 @@ async def delayed_send_trade_book(book):
     while conf.discord_webhook_2_enabled:
         await sleep(conf.trade_book_wait)
         if len(book) > 0:
-            try:
-                send_trade_book(book)
-            except Exception:
-                continue
+            send_trade_book(book)
