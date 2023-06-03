@@ -5,7 +5,7 @@ from config import Config
 conf = Config("config.yaml")
 
 
-def send_dictionary_to_channel(dictionary):
+def send_dictionary_to_channel(dictionary, total_profit):
     # Build a formatted message from the dictionary
     lines = []
     net_profit = 0  # Initialize net profit
@@ -25,9 +25,13 @@ def send_dictionary_to_channel(dictionary):
 
     # Determine net profit emoji
     net_profit_emoji = '🟩🟩🟩' if net_profit > 0 else '🟥🟥🟥' if net_profit < 0 else '🟧🟧🟧'
-    # Add a separating line and net profit line
+    total_profit_emoji = '🟩🟩🟩' if total_profit > 0 else '🟥🟥🟥' if total_profit < 0 else '🟧🟧🟧'
+
+# Add a separating line and net profit line
     lines.append("------------------------------------------------------------------------------------")  # Markdown for horizontal line
-    lines.append(f"Net Profit: {round(net_profit, 2)}% {net_profit_emoji}")
+    lines.append(f"Open Profit: {round(net_profit, 2)}% {net_profit_emoji}")
+    lines.append("------------------------------------------------------------------------------------")  # Markdown for horizontal line
+    lines.append(f"Total Profit: {round(total_profit, 2)}% {total_profit_emoji}")
 
     # Combine all lines into a single string, with line breaks between lines
     message = "\n".join(lines)
