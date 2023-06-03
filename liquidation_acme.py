@@ -27,7 +27,7 @@ output_table = []
 output_confirmation = []
 # Keep track of open trades
 trade_book = {}
-# Keep track of complete trades
+
 
 
 async def binance_liquidations() -> None:
@@ -216,20 +216,30 @@ async def price_tracker(open_trades_book: dict) -> dict:
     return open_market_prices
 
 
-async def trade_performances(open_trades_book: dict, open_market_prices: dict) -> dict:
+# Total profit
+total_profit = 0.0
+
+
+async def market_exits(open_trades_book: dict, open_market_prices: dict) -> dict:
+    global total_profit  # Declare global at the beginning of the function
     trade_performance = {}
 
-    for symbol in open_trades_book.keys():
+    for symbol in list(open_trades_book.keys()):
         trade_performance[symbol] = {}
         entry_number = 1
 
-        for entry in open_trades_book[symbol]:
+        for entry in open_trades_book[symbol][:]:
             entry_price, side = entry
             live_price = open_market_prices[symbol]
             if side == "🟩 🟩 🟩 BUY 🟩 🟩 🟩":
                 percentage_gain = ((live_price - entry_price) / entry_price) * 100
             else:
                 percentage_gain = ((entry_price - live_price) / entry_price) * 100
+
+            # If percentage gain hits +0.6% or dips -0.5%, remove the trade
+            if percentage_gain >= 0.6 or percentage_gain <= -0.5:
+                open_trades_book[symbol].remove(entry)
+                total_profit += percentage_gain  # Update the total_profit
 
             trade_performance[symbol][f'entry_{entry_number}'] = {
                 'entry_price': entry_price,
@@ -238,8 +248,17 @@ async def trade_performances(open_trades_book: dict, open_market_prices: dict) -
                 'side': side
             }
             entry_number += 1
+
+        # If no more trades for symbol, remove it from open_trades_book
+        if not open_trades_book[symbol]:
+            del open_trades_book[symbol]
+
+    print(f"Total Profit: {total_profit}%")  # Print total_profit at the end of the function
+
+    return trade_performance
+
+
 ###########################################################################################
-#DEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGING
     # Debugging percentage_gain result for scenario
     # where an asset is bought at 10.2 but price falls to 9.95
     # candle_open = 10.2
@@ -268,35 +287,7 @@ async def trade_performances(open_trades_book: dict, open_market_prices: dict) -
     #     'debug_percentage_gain': debug_percentage_gain,
     #     'side': '🟩 🟩 🟩 BUY 🟩 🟩 🟩'
     # }
-#DEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGINGDEBUGGING
 ###########################################################################################
-
-    return trade_performance
-
-
-async def market_exit(take_profit_percent: float, stop_loss_percent: float,
-                      open_trades_book: dict, open_market_prices: dict):
-
-    # calculate performances
-    performances_dict = await trade_performances(open_trades_book, open_market_prices)
-
-    for symbol, performances in performances_dict.items():
-        for entry, performance in performances.items():
-            percentage_gain = performance['percentage_gain']
-
-            # Check for either take profit or stop loss
-            if percentage_gain >= take_profit_percent or percentage_gain <= -stop_loss_percent:
-                # Remove the corresponding entry from the open trades
-                # Note: entry is in format 'entry_{entry_number}'
-                entry_number = int(entry.split('_')[1]) - 1
-                del open_trades_book[symbol][entry_number]
-
-    # After deleting some entries, clean up any symbols that no longer have trades
-    symbols_to_delete = [symbol for symbol, trades in open_trades_book.items() if len(trades) == 0]
-    for symbol in symbols_to_delete:
-        del open_trades_book[symbol]
-
-    return open_trades_book
 
 
 async def get_pnz(scaled_open: float, scaled_close: float) -> bool:
