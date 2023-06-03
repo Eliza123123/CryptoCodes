@@ -1,8 +1,8 @@
 import asyncio
 import json
 
-import websockets
 from requests import get
+from websockets import exceptions, connect
 
 
 class Websocket:
@@ -11,12 +11,12 @@ class Websocket:
     """
 
     id: int
-    websocket: websockets
+    websocket: connect
     queue: asyncio.Queue
     queue_subscribe: asyncio.Queue
 
     def __init__(self) -> None:
-        self.id = 0
+        self.wss = "wss://fstream.binance.com/ws"
         self.queue_liquidation = asyncio.Queue()
         self.queue_kline = asyncio.Queue()
         self.queue_subscribe = asyncio.Queue()
@@ -65,22 +65,26 @@ class Websocket:
             "id": 1
         })
         while True:
-            message = await self.websocket.recv()
-            if message is None:
-                break
-            m = json.loads(message)
-            if "e" in m:
-                if m['e'] == "forceOrder":
-                    await self.queue_liquidation.put(m['o'])
-                elif m['e'] == "kline":
-                    await self.queue_kline.put(m['k'])
-            else:
-                if m["result"] is None and m['id'] == 1:
-                    print("Liquidations stream subscribed")
-                elif m["result"] is None and m['id'] == 2:
-                    print("Kline stream subscribed")
-                elif m["result"] is None and m['id'] == 3:
-                    print("Kline stream unsubscribed")
+            try:
+                message = await self.websocket.recv()
+                if message is None:
+                    break
+                m = json.loads(message)
+                if "e" in m:
+                    if m['e'] == "forceOrder":
+                        await self.queue_liquidation.put(m['o'])
+                    elif m['e'] == "kline":
+                        await self.queue_kline.put(m['k'])
+                else:
+                    if m["result"] is None and m['id'] == 1:
+                        print("Liquidations stream subscribed")
+                    elif m["result"] is None and m['id'] == 2:
+                        print("Kline stream subscribed")
+                    elif m["result"] is None and m['id'] == 3:
+                        print("Kline stream unsubscribed")
+            except exceptions.ConnectionClosedError as e:
+                print(f"Connection closed unexpectedly: {e}. Retrying connection...")
+                self.websocket = await connect(self.wss)
 
     async def _stream_subscription(self):
         while True:
@@ -98,7 +102,7 @@ class Websocket:
             await fn(message)
 
     async def stream(self):
-        self.websocket = await websockets.connect("wss://fstream.binance.com/ws")
+        self.websocket = await connect(self.wss)
         await asyncio.gather(self._websocket_stream(), self._stream_subscription())
 
 
