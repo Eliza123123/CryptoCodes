@@ -114,7 +114,7 @@ async def process_message(msg) -> None:
                 if symbol not in trade_book:
                     trade_book[symbol] = {
                         "symbol": symbol,
-                        "side": msg["S"],
+                        "side": "SELL" if msg["S"] == "BUY" else "BUY",
                         "entry": float(scaled_close),
                         "ts": datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
                         "close": 0,
