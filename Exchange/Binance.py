@@ -93,10 +93,10 @@ class Websocket:
                         print("Kline stream subscribed")
                     elif m["result"] is None and m['id'] == 3:
                         print("Kline stream unsubscribed")
-            except exceptions.ConnectionClosed as e:
+            except (exceptions.ConnectionClosed, exceptions.ConnectionClosedError) as e:
                 print(f"Connection closed unexpectedly: {e}. Retrying connection...")
                 await asyncio.sleep(1)
-                self.websocket = await connect(self.wss, ping_interval=20, ping_timeout=10)
+                self.websocket = await connect(self.wss, ping_interval=10, ping_timeout=25)
                 self.subscribe_liquidation()
                 self.subscribe(self.stream_subscriptions)
                 continue
@@ -117,7 +117,7 @@ class Websocket:
             await fn(message)
 
     async def stream(self):
-        self.websocket = await connect(self.wss, ping_interval=20, ping_timeout=10)
+        self.websocket = await connect(self.wss, ping_interval=10, ping_timeout=25)
         await asyncio.gather(self._websocket_stream(), self._stream_subscription())
 
 
