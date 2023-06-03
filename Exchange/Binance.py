@@ -32,12 +32,16 @@ class Websocket:
         :return:
         :rtype:
         """
+
+        subs = []
         for symbol, timeframe in symbols:
-            self.stream_subscriptions[symbol] = f"{symbol}@kline_{timeframe}"
+            fmt = f"{symbol}@kline_{timeframe}"
+            subs.append(fmt)
+            self.stream_subscriptions[symbol] = fmt
 
         self.queue_subscribe.put_nowait({
             "method": "SUBSCRIBE",
-            "params": [*self.stream_subscriptions.values()],
+            "params": subs,
             "id": 2
         })
 
