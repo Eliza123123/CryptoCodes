@@ -1,13 +1,14 @@
-import json
+from asyncio import sleep
+
 import requests
+from tabulate import tabulate
 
 from config import Config
-from tabulate import tabulate
 
 conf = Config("config.yaml")
 
 
-def send_to_channel(zs_table, table, confirmation):
+def send_to_channel(zs_table, table, confirmation) -> None:
     content = ("\n" + "-" * 65 + "\n").join([zs_table, table])
 
     result = requests.post(conf.discord_webhook, json={
@@ -21,24 +22,33 @@ def send_to_channel(zs_table, table, confirmation):
         print(err)
 
 
-def send_trade_book(dictionary):
-    # Create a table header
-    table_header = ["Symbol", "Average Entry Price"]
-    # Create a list to hold the table data
-    table_data = []
+def send_trade_book(book) -> None:
+    """
+    send_trade_book takes a dictionary and builds a ascii table, open percent profit summary and sends to discord.
 
-    # Iterate over the dictionary
-    for symbol, prices in dictionary.items():
-        # Calculate the average price
-        avg_price = sum(prices) / len(prices)
-        # Add a row to the table data
-        table_data.append([symbol, avg_price])
+    :param book: Symbol as key, book details as value
+    :type book: Dictionary
+    :return: None
+    :rtype:
+    """
+    # todo Fix possible bug here with hardcoded list index
+    net_open_perc = sum([[i for i in n.values()][5] for n in book.values()])
+    net_open_perc_emoji = '🟩🟩🟩' if net_open_perc > 0 else '🟥🟥🟥' if net_open_perc < 0 else '🟧🟧🟧'
 
-    # Create a table
-    table = tabulate(table_data, headers=table_header, tablefmt="plain", floatfmt=".2f")
+    lines = [
+        tabulate([[i for i in j.values()] for i, j in [n for n in book.items()]],
+                 headers=["Symbol", "Side", "Entry Price", "Entry Timestamp", "Market Price", "Percent Gain"],
+                 tablefmt="simple", floatfmt=".2f"),
+        "-" * 65,
+        f"Open Profit: {round(net_open_perc, 2)}% {net_open_perc_emoji}"
+    ]
 
-    result = requests.post(conf.discord_webhook, json={
-        "content": f"**Trade Book**\n```\n{table}\n```",  # Added title "Trade Book"
+    message = "\n".join(lines)
+
+    print(message)
+
+    result = requests.post(conf.discord_webhook_2, json={
+        "content": f"\n```\n{message}\n```",
         "username": "ACME"
     })
 
@@ -46,3 +56,13 @@ def send_trade_book(dictionary):
         result.raise_for_status()
     except requests.exceptions.HTTPError as err:
         print(err)
+
+
+async def delayed_send_trade_book(book):
+    while conf.discord_webhook_2_enabled:
+        await sleep(conf.trade_book_wait)
+        if len(book) > 0:
+            try:
+                send_trade_book(book)
+            except Exception:
+                continue

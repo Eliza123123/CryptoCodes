@@ -1,19 +1,16 @@
 import asyncio
-import json
 import locale
-import queue
 import statistics
 from datetime import datetime
 
-import websockets
 from tabulate import tabulate
-from websockets import exceptions
 
+from Exchange.Binance import Websocket as Binance_websocket
+from Exchange.Binance import fetch_kline
 from config import Config
-from Lib import acme, exchange, discord
+from lib import acme, discord
 
 locale.setlocale(locale.LC_MONETARY, 'en_US.UTF-8')
-messages = queue.Queue()
 conf = Config("config.yaml")
 
 # Initiate Acme
@@ -27,120 +24,117 @@ output_table = []
 output_confirmation = []
 # Keep track of open trades
 trade_book = {}
+# Binance websocket
+ws = Binance_websocket()
 
 
-async def binance_liquidations() -> None:
+async def process_trade_book(msg) -> None:
     """
-    This is an asynchronous coroutine that establishes a connection with the Binance
-    cryptocurrency exchange's liquidation data websocket server and continuously monitors
-    the stream of data.
+    process_trade_book is a callback function called from the websocket on_kline asynchronous coroutine.
 
-    If the connection to the server is lost, the function automatically attempts to
-    reconnect after a brief delay.
+    This function is called on every kline tick.
 
-    Each message received from the server is a JSON string representing a liquidation
-    event. The function loads the JSON string into a Python dictionary and puts it into
-    a global queue for further processing.
+    https://binance-docs.github.io/apidocs/futures/en/#kline-candlestick-streams
+
+    :param msg: Provided from the websocket kline stream.
+    :type msg: Dictionary
+    :return: None
+    :rtype:
     """
-    while True:  # Add a loop for automatic reconnection
-        try:
-            async with websockets.connect("wss://fstream.binance.com/ws/!forceOrder@arr",
-                                          ping_interval=20, ping_timeout=10) as websocket:
-                while True:
-                    msg = await websocket.recv()
-                    if msg is None:
-                        break  # Connection closed cleanly
-                    else:
-                        messages.put(json.loads(msg)["o"])
-        except websockets.exceptions.ConnectionClosedError as e:
-            print(f"Connection closed unexpectedly: {e}. Retrying connection...")
-        except Exception as e:
-            print(f"Unexpected error occurred: {e}. Retrying connection...")
-        finally:
-            await asyncio.sleep(1)  # Wait before reconnecting
+
+    symbol = msg['s']
+    scale_factor = acme.get_scale(float(msg['c']))
+    tb = trade_book[symbol]
+    tb["close"] = float(msg['c']) / scale_factor
+
+    if tb["side"] == "BUY":
+        tb["perc"] = ((tb["close"] - tb["entry"]) / tb["entry"]) * 100
+    else:
+        tb["perc"] = ((tb["entry"] - tb["close"]) / tb["entry"]) * 100
+
+    # todo refactor and add SL & TP logic here
+
+    trade_book[symbol] = tb
 
 
-async def process_messages() -> None:
+async def process_message(msg) -> None:
     """
-    This function is an asynchronous coroutine that continuously monitors and processes messages
-    from a global queue. The messages represent cryptocurrency liquidation events.
+    process_message is a callback function called from the websocket on_liquidation asynchronous coroutine.
 
-    Each message in the queue is a dictionary containing details about a single liquidation event.
-    The function pulls messages from the queue, extracts the relevant details (such as symbol,
-    quantity, and price), and formats this data into a human-readable text block.
-
-    When the queue is empty, the function waits for a short period (0.01 seconds) before checking
-    the queue again to avoid excessive CPU usage.
+    :param msg: Provided from the websocket liquidation stream.
+    :type msg: Dictionary
+    :return: None
+    :rtype:
     """
-    while True:
-        if not messages.empty():
-            msg = messages.get()
-            symbol = msg["s"]
-            quantity = float(msg["q"])
-            price = float(msg["p"])
-            liq_value = round(float(quantity * price), 2)
 
-            if symbol in conf.excluded_symbols:
-                print(f"{symbol} Liquidation in excluded list.")
+    symbol = msg["s"]
+    quantity = float(msg["q"])
+    price = float(msg["p"])
+    liq_value = round(float(quantity * price), 2)
 
-            elif liq_value > conf.filters["liquidation"]:
-                candle_open, candle_close, scaled_open, scaled_close = await get_scaled_price(symbol)
+    if symbol in conf.excluded_symbols:
+        print(f"Liquidation {symbol} in excluded list.")
 
-                output_table.append(["Symbol", symbol])
-                output_table.append(["Side", "Buyer Liquidated" if msg["S"] == "SELL" else "Seller Liquidated"])
-                output_table.append(["Quantity", msg["q"]])
-                output_table.append(["Price", msg["p"]])
-                output_table.append(["Liquidation Value", locale.currency(liq_value, grouping=True)])
-                output_table.append(["Timestamp", datetime.now().strftime('%Y-%m-%d %H:%M:%S')])
-                output_table.append(["Scaled Price", scaled_close])
+    elif liq_value > conf.filters["liquidation"]:
+        candle_open, candle_close, scaled_open, scaled_close = await get_scaled_price(symbol)
 
-                pnz = await get_pnz(scaled_open, scaled_close)
+        output_table.append(["Symbol", symbol])
+        output_table.append(["Side", "Buyer Liquidated" if msg["S"] == "SELL" else "Seller Liquidated"])
+        output_table.append(["Quantity", msg["q"]])
+        output_table.append(["Price", msg["p"]])
+        output_table.append(["Liquidation Value", locale.currency(liq_value, grouping=True)])
+        output_table.append(["Timestamp", datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')])
+        output_table.append(["Scaled Price", scaled_close])
 
-                if pnz:
-                    zscore_vol = await volume_filter(symbol, conf.zscore_lookback, conf.zscore_timeframes)
+        pnz = await get_pnz(scaled_open, scaled_close)
 
-                    print('-' * 65)
+        if pnz:
+            zscore_vol = await volume_filter(symbol, conf.zscore_lookback, conf.zscore_timeframes)
 
-                    # 1. Print volume analysis
-                    zs_table = tabulate([['Z-Score'] + [zs for zs in zscore_vol.values()]],
-                                        headers=['Timeframe'] + [zs for zs in zscore_vol.keys()],
-                                        tablefmt="simple",
-                                        floatfmt=".2f")
-                    print(zs_table)
-                    print('-' * 65)
+            print('-' * 65)
 
-                    # 2. Print symbol info
-                    table = tabulate(output_table, tablefmt="plain")
-                    print(table)
-                    print('-' * 65)
+            # 1. Print volume analysis
+            zs_table = tabulate([['Z-Score'] + [zs for zs in zscore_vol.values()]],
+                                headers=['Timeframe'] + [zs for zs in zscore_vol.keys()],
+                                tablefmt="simple",
+                                floatfmt=".2f")
+            print(zs_table)
+            print('-' * 65)
 
-                    if any(z_score > conf.filters["zscore"] for z_score in zscore_vol.values()):
-                        side = "🟥 🟥 🟥 SELL 🟥 🟥 🟥" if msg["S"] == "BUY" else "🟩 🟩 🟩 BUY 🟩 🟩 🟩"
-                        output_confirmation.append(f"{side} conditions are met")
+            # 2. Print symbol info
+            table = tabulate(output_table, tablefmt="plain")
+            print(table)
+            print('-' * 65)
 
-                        # Check if the symbol already exists in the trade_book
-                        if symbol in trade_book:
-                            # Append the new trade to the existing list
-                            trade_book[symbol].append((scaled_close, side))
-                        else:
-                            # Create a new list for the symbol
-                            trade_book[symbol] = [(scaled_close, side)]
+            if any(z_score > conf.filters["zscore"] for z_score in zscore_vol.values()):
+                side = "🟥 🟥 🟥 SELL 🟥 🟥 🟥" if msg["S"] == "BUY" else "🟩 🟩 🟩 BUY 🟩 🟩 🟩"
+                output_confirmation.append(f"{side} conditions are met")
 
-                        if conf.discord_webhook_enabled:
-                            discord.send_to_channel(zs_table, table, side)
+                # If no trade exists for the symbol, open trade and subscribe to kline stream for updates
+                if symbol not in trade_book:
+                    trade_book[symbol] = {
+                        "symbol": symbol,
+                        "side": msg["S"],
+                        "entry": float(scaled_close),
+                        "ts": datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+                        "close": 0,
+                        "perc": 0
+                    }
+                    ws.subscribe([(symbol.lower(), "1m")])
 
-                else:
-                    output_confirmation.append(f"{symbol} Liquidation: ACME not detected.")
+                if conf.discord_webhook_enabled:
+                    discord.send_to_channel(zs_table, table, side)
 
-                # 3. Print confirmation messages
-                for confirmation in output_confirmation:
-                    print(confirmation)
-
-                # Reset tables
-                output_table.clear()
-                output_confirmation.clear()
         else:
-            await asyncio.sleep(0.01)  # prevent CPU spin when the queue is empty
+            output_confirmation.append(f"{symbol} Liquidation: ACME not detected.")
+
+        # 3. Print confirmation messages
+        for confirmation in output_confirmation:
+            print(confirmation)
+
+        # Reset tables
+        output_table.clear()
+        output_confirmation.clear()
 
 
 async def volume_filter(symbol: str, n: int, timeframes: list) -> dict:
@@ -181,7 +175,7 @@ async def volume_filter(symbol: str, n: int, timeframes: list) -> dict:
             'interval': timeframe,
             'limit': n,
         }
-        tasks.append(exchange.fetch_kline(parameters))
+        tasks.append(fetch_kline(parameters))
 
     # Gather tasks and run them concurrently
     responses = await asyncio.gather(*tasks)
@@ -213,7 +207,7 @@ async def get_scaled_price(symbol: str) -> list:
         'interval': '1m',
         'limit': 1,
     }
-    data = await exchange.fetch_kline(parameters)
+    data = await fetch_kline(parameters)
 
     if not data:
         return []
@@ -222,51 +216,6 @@ async def get_scaled_price(symbol: str) -> list:
     candle_close = float(data[0][4])
     scale_factor = acme.get_scale(min(candle_open, candle_close))
     return [candle_open, candle_close, candle_open / scale_factor, candle_close / scale_factor]
-
-
-async def price_tracker(open_trades_book: dict) -> dict:
-
-    open_market_prices = {}
-
-    for symbol, average_price in open_trades_book.items():
-        parameters = {
-            'symbol': symbol,
-            'interval': '1m',
-            'limit': 1,
-        }
-        data = await exchange.fetch_kline(parameters)
-        candle_open = float(data[0][1])
-        candle_close = float(data[0][4])
-        scale_factor = acme.get_scale(min(candle_open, candle_close))
-        open_market_prices[symbol] = candle_close / scale_factor  # add live price to the dictionary
-
-    return open_market_prices
-
-
-async def trade_performances(open_trades_book: dict, open_market_prices: dict) -> dict:
-    trade_performance = {}
-
-    for symbol in open_trades_book.keys():
-        trade_performance[symbol] = {}
-        entry_number = 1
-
-        for entry in open_trades_book[symbol]:
-            entry_price, side = entry
-            live_price = open_market_prices[symbol]
-            if side == "🟩 🟩 🟩 BUY 🟩 🟩 🟩":
-                percentage_gain = ((live_price - entry_price) / entry_price) * 100
-            else:
-                percentage_gain = ((entry_price - live_price) / entry_price) * 100
-
-            trade_performance[symbol][f'entry_{entry_number}'] = {
-                'entry_price': entry_price,
-                'market_price': live_price,
-                'percentage_gain': percentage_gain,
-                'side': side
-            }
-            entry_number += 1
-
-    return trade_performance
 
 
 async def get_pnz(scaled_open: float, scaled_close: float) -> bool:

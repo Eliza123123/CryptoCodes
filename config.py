@@ -19,6 +19,7 @@ class Config:
     Configuration object based on configuration file.
     """
 
+    trade_book_wait: int
     filters: Filters
     zscore_timeframes: list
     zscore_lookback: int
@@ -56,6 +57,9 @@ class Config:
                     )
                     self.discord_webhook_2_enabled = config.get(
                         "discord_webhook_2_enabled"
+                    )
+                    self.trade_book_wait = config.get(
+                        "trade_book_wait"
                     )
                     self.filters = config.get(
                         "filters"
