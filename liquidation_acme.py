@@ -6,7 +6,7 @@ from tabulate import tabulate
 from Exchange.Binance import Websocket as Binance_websocket
 from Exchange.Binance import fetch_kline
 from config import Config
-from Lib import acme, discord
+from lib import acme, discord
 
 locale.setlocale(locale.LC_MONETARY, 'en_US.UTF-8')
 conf = Config("config.yaml")
