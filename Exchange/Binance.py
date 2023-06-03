@@ -120,7 +120,8 @@ class Websocket:
     async def _stream_subscription(self):
         while True:
             message = await self.queue_subscribe.get()
-            await self.websocket.send(json.dumps(message))
+            if not websockets.ConnectionClosed:
+                await self.websocket.send(json.dumps(message))
 
     async def on_liquidation(self, fn):
         while True:
