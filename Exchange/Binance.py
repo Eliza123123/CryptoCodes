@@ -63,11 +63,13 @@ class Websocket:
         :return:
         :rtype:
         """
+        liquidations = ["!forceOrder@arr"]
         self.queue_subscribe.put_nowait({
             "method": "SUBSCRIBE",
-            "params": ["!forceOrder@arr"],
+            "params": liquidations,
             "id": 1
         })
+        self.stream_subscriptions = self.stream_subscriptions + liquidations
         while True:
             try:
                 message = await self.websocket.recv()
