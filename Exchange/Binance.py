@@ -40,6 +40,15 @@ class Websocket:
         })
         self.stream_subscriptions = self.stream_subscriptions + subs
 
+    def subscribe_liquidation(self):
+        liquidations = ["!forceOrder@arr"]
+        self.queue_subscribe.put_nowait({
+            "method": "SUBSCRIBE",
+            "params": liquidations,
+            "id": 1
+        })
+        self.stream_subscriptions = self.stream_subscriptions + liquidations
+
     def unsubscribe(self, symbols: list) -> None:
         """
         Unsubscribe to the kline streams for the given symbols and timeframes
@@ -63,13 +72,7 @@ class Websocket:
         :return:
         :rtype:
         """
-        liquidations = ["!forceOrder@arr"]
-        self.queue_subscribe.put_nowait({
-            "method": "SUBSCRIBE",
-            "params": liquidations,
-            "id": 1
-        })
-        self.stream_subscriptions = self.stream_subscriptions + liquidations
+
         while True:
             try:
                 message = await self.websocket.recv()
@@ -92,9 +95,8 @@ class Websocket:
                 print(f"Connection closed unexpectedly: {e}. Retrying connection...")
                 await asyncio.sleep(1)
                 self.websocket = await connect(self.wss, ping_interval=20, ping_timeout=10)
+                self.subscribe_liquidation()
                 self.subscribe(self.stream_subscriptions)
-                print("Connected reconnected successfully")
-                continue
 
     async def _stream_subscription(self):
         while True:
