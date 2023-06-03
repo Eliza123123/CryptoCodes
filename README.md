@@ -16,9 +16,5 @@ source venv/bin/activate
 ```bash
 pip install -r requirements.txt
 ```
-3. Configure your environment
-```bash
-export LC_ALL=en_US.UTF-8
-export LANG=en_US.UTF-8
 ```
 4. Run the project with the command: `python main.py`.
