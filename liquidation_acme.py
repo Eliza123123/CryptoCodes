@@ -24,6 +24,8 @@ trade_book = {}
 # Binance websocket
 ws = Binance_websocket()
 
+total_profit = 0
+
 
 async def process_trade_book(msg) -> None:
     """
@@ -35,6 +37,7 @@ async def process_trade_book(msg) -> None:
     :return: None
     :rtype:
     """
+    global total_profit
     symbol = msg['s']
     scale_factor = acme.get_scale(float(msg['c']))
     # Iterate over each trade in trade book for the symbol
@@ -47,10 +50,13 @@ async def process_trade_book(msg) -> None:
 
         # Check if the trade should be closed
         if trade["perc"] >= 0.6 or trade["perc"] <= -0.5:
+            # Update the total profit
+            total_profit += trade["perc"]
             # Remove trade from the trade book
             trade_book[symbol].remove(trade)
             # Send a message to indicate the trade has been closed
-            print(f"Trade for {symbol} closed with {trade['perc']}% gain.")
+            print(f"Trade for {symbol} closed with {trade['perc']}% gain. Total profit is now {total_profit}%.")
+            print(total_profit)
 
 
 async def process_message(msg) -> None:

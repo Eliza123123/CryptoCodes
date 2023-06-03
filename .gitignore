@@ -1,7 +1,5 @@
 .idea
 venv
 __pycache__
-Lib/site-packages/
-Scripts/
 *.iml
 *.yaml

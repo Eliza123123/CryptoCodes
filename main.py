@@ -1,6 +1,6 @@
 import asyncio
 
-from Lib.discord import delayed_send_trade_book
+from lib.discord import delayed_send_trade_book
 from liquidation_acme import ws, process_message, process_trade_book, trade_book
 
 
