@@ -73,6 +73,8 @@ class Websocket:
         :rtype:
         """
 
+        self.subscribe_liquidation()
+
         while True:
             try:
                 message = await self.websocket.recv()
