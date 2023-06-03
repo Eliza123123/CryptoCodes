@@ -99,6 +99,7 @@ class Websocket:
                 self.websocket = await connect(self.wss, ping_interval=20, ping_timeout=10)
                 self.subscribe_liquidation()
                 self.subscribe(self.stream_subscriptions)
+                continue
 
     async def _stream_subscription(self):
         while True:
