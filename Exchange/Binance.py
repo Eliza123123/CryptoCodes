@@ -90,7 +90,7 @@ class Websocket:
                 print(f"Connection closed unexpectedly: {e}. Retrying connection...")
                 await asyncio.sleep(1)
                 self.websocket = await connect(self.wss, ping_interval=20, ping_timeout=10)
-                self.subscribe(self.subscription_list)
+                self.subscribe(self.stream_subscriptions)
                 print("Connected reconnected successfully")
                 continue
 
