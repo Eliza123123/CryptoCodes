@@ -1,9 +1,8 @@
 import asyncio
 import json
 
-import websockets
 from requests import get
-from websockets import exceptions, connect
+from websockets import exceptions, connect, WebSocketClientProtocol
 
 
 class Websocket:
@@ -11,8 +10,7 @@ class Websocket:
     Exchange websocket implementation for Binance.
     """
 
-    id: int
-    websocket: websockets.connect
+    websocket: WebSocketClientProtocol
     queue: asyncio.Queue
     queue_subscribe: asyncio.Queue
 
@@ -120,8 +118,7 @@ class Websocket:
     async def _stream_subscription(self):
         while True:
             message = await self.queue_subscribe.get()
-            if not websockets.ConnectionClosed:
-                await self.websocket.send(json.dumps(message))
+            await self.websocket.send(json.dumps(message))
 
     async def on_liquidation(self, fn):
         while True:
