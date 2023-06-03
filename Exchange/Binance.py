@@ -1,7 +1,7 @@
 import asyncio
 import json
-import websockets
 
+import websockets
 from requests import get
 from websockets import exceptions, connect
 
@@ -21,7 +21,7 @@ class Websocket:
         self.queue_liquidation = asyncio.Queue()
         self.queue_kline = asyncio.Queue()
         self.queue_subscribe = asyncio.Queue()
-        self.stream_subscriptions = []
+        self.stream_subscriptions = {}
 
     def subscribe(self, symbols: list) -> None:
         """
@@ -32,35 +32,47 @@ class Websocket:
         :return:
         :rtype:
         """
-        subs = [f"{symbol}@kline_{timeframe}" for symbol, timeframe in symbols]
+        for symbol, timeframe in symbols:
+            self.stream_subscriptions[symbol] = f"{symbol}@kline_{timeframe}"
+
         self.queue_subscribe.put_nowait({
             "method": "SUBSCRIBE",
-            "params": subs,
+            "params": [*self.stream_subscriptions.values()],
             "id": 2
         })
-        self.stream_subscriptions = self.stream_subscriptions + subs
 
     def subscribe_liquidation(self):
-        liquidations = ["!forceOrder@arr"]
         self.queue_subscribe.put_nowait({
             "method": "SUBSCRIBE",
-            "params": liquidations,
+            "params": ["!forceOrder@arr"],
             "id": 1
         })
-        self.stream_subscriptions = self.stream_subscriptions + liquidations
+
+    def subscribe_klines(self):
+        self.queue_subscribe.put_nowait({
+            "method": "SUBSCRIBE",
+            "params": [*self.stream_subscriptions.values()],
+            "id": 1
+        })
 
     def unsubscribe(self, symbols: list) -> None:
         """
-        Unsubscribe to the kline streams for the given symbols and timeframes
+        Unsubscribe to the kline streams for the given symbols
 
-        :param symbols: [("btcusdt", "1m"),...]
-        :type symbols: List of tuples containing the symbol and timeframe as strings
+        :param symbols: ["btcusdt","ltcusdt",...]
+        :type symbols: List of strings containing the symbols
         :return:
         :rtype:
         """
+
+        unsubs = []
+        for i in symbols:
+            unsubs.append(self.stream_subscriptions[i])
+            del self.stream_subscriptions[i]
+
         self.queue_subscribe.put_nowait({
             "method": "UNSUBSCRIBE",
-            "params": [f"{symbol}@kline_{timeframe}" for symbol, timeframe in symbols],
+            "params": unsubs,
             "id": 3
         })
 
@@ -98,7 +110,7 @@ class Websocket:
                 await asyncio.sleep(1)
                 self.websocket = await connect(self.wss, ping_interval=10, ping_timeout=25)
                 self.subscribe_liquidation()
-                self.subscribe(self.stream_subscriptions)
+                self.subscribe_klines()
                 continue
 
     async def _stream_subscription(self):
