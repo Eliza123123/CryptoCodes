@@ -52,11 +52,17 @@ class Config:
                     self.discord_webhook_2 = config.get(
                         "discord_webhook_2"
                     )
+                    self.discord_webhook_3 = config.get(
+                        "discord_webhook_3"
+                    )
                     self.discord_webhook_enabled = config.get(
                         "discord_webhook_enabled"
                     )
                     self.discord_webhook_2_enabled = config.get(
                         "discord_webhook_2_enabled"
+                    )
+                    self.discord_webhook_3_enabled = config.get(
+                        "discord_webhook_3_enabled"
                     )
                     self.trade_book_wait = config.get(
                         "trade_book_wait"

@@ -55,8 +55,8 @@ async def process_trade_book(msg) -> None:
             # Remove trade from the trade book
             trade_book[symbol].remove(trade)
             # Send a message to indicate the trade has been closed
-            print(f"Trade for {symbol} closed with {trade['perc']}% gain. Total profit is now {total_profit}%.")
-            print(total_profit)
+            discord.send_text(f"Trade for {symbol} closed with {trade['perc']}% gain."
+                              f" Total profit is now {total_profit}%.")
 
 
 async def process_message(msg) -> None:
@@ -112,17 +112,10 @@ async def process_message(msg) -> None:
                 }
                 if symbol not in trade_book:
                     trade_book[symbol] = [trade_data]
-                    trade_book[symbol] = {
-                        "symbol": symbol,
-                        "side": "SELL" if msg["S"] == "BUY" else "BUY",
-                        "entry": float(scaled_close),
-                        "ts": datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
-                        "close": 0,
-                        "perc": 0
-                    }
                     ws.subscribe([(symbol.lower(), "1m")])
                 else:
                     trade_book[symbol].append(trade_data)
+
                 if conf.discord_webhook_enabled:
                     discord.send_to_channel(zs_table, table, side)
         else:

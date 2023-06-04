@@ -8,6 +8,18 @@ from config import Config
 conf = Config("config.yaml")
 
 
+def send_text(message: str) -> None:
+    result = requests.post(conf.discord_webhook_3, json={
+        "content": message,
+        "username": "ACME"
+    })
+
+    try:
+        result.raise_for_status()
+    except requests.exceptions.HTTPError as err:
+        print(err)
+
+
 def send_to_channel(zs_table, table, confirmation) -> None:
     content = ("\n" + "-" * 65 + "\n").join([zs_table, table])
 
@@ -37,7 +49,8 @@ def send_trade_book(book) -> None:
     # Iterate over each symbol and its trades in the book
     for symbol, trades in book.items():
         for trade in trades:
-            # Calculate net open percent
+            print(type(trade))  # Add this line to check the type of trade
+            print(trade)  # And this line to print the content of trade
             net_open_perc += trade['perc']
 
     net_open_perc_emoji = '🟩🟩🟩' if net_open_perc > 0 else '🟥🟥🟥' if net_open_perc < 0 else '🟧🟧🟧'
@@ -48,6 +61,7 @@ def send_trade_book(book) -> None:
                  tablefmt="simple", floatfmt=".2f"),
         "-" * 65,
         f"Open Profit: {round(net_open_perc, 2)}% {net_open_perc_emoji}"
+
     ]
 
     message = "\n".join(lines)
