@@ -54,6 +54,9 @@ async def process_trade_book(msg) -> None:
             total_profit += trade["perc"]
             # Remove trade from the trade book
             trade_book[symbol].remove(trade)
+            # unsubscribe from websocket if symbol has no other trades
+            if symbol not in trade_book:
+                ws.unsubscribe([symbol])
             # Send a message to indicate the trade has been closed
             discord.send_text(f"Trade for {symbol} closed with {trade['perc']}% gain."
                               f" Total profit is now {total_profit}%.")
