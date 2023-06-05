@@ -1,4 +1,5 @@
 from asyncio import sleep
+from datetime import datetime
 
 import requests
 from tabulate import tabulate
@@ -9,6 +10,22 @@ conf = Config("config.yaml")
 
 
 def send_text(message: str) -> None:
+    result = requests.post(conf.discord_webhook_3, json={
+        "content": message,
+        "username": "ACME"
+    })
+
+    try:
+        result.raise_for_status()
+    except requests.exceptions.HTTPError as err:
+        print(err)
+
+
+def send_exit_message(symbol: str, perc: float, total_profit: float) -> None:
+    message = f"Trade for {symbol} closed with {round(perc, 2)}% gain." \
+              f" Total profit is now {round(total_profit, 2)}%," \
+              f" {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}"
+
     result = requests.post(conf.discord_webhook_3, json={
         "content": message,
         "username": "ACME"
@@ -49,8 +66,6 @@ def send_trade_book(book) -> None:
     # Iterate over each symbol and its trades in the book
     for symbol, trades in book.items():
         for trade in trades:
-            print(type(trade))  # Add this line to check the type of trade
-            print(trade)  # And this line to print the content of trade
             net_open_perc += trade['perc']
 
     net_open_perc_emoji = '🟩🟩🟩' if net_open_perc > 0 else '🟥🟥🟥' if net_open_perc < 0 else '🟧🟧🟧'

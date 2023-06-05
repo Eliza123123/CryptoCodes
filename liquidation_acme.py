@@ -6,7 +6,7 @@ from tabulate import tabulate
 from Exchange.Binance import Websocket as Binance_websocket
 from Exchange.Binance import fetch_kline
 from config import Config
-from lib import acme, discord
+from lib import acme, discord, exit_strategies
 
 locale.setlocale(locale.LC_MONETARY, 'en_US.UTF-8')
 conf = Config("config.yaml")
@@ -24,22 +24,13 @@ trade_book = {}
 # Binance websocket
 ws = Binance_websocket()
 
-total_profit = 0
-
 
 async def process_trade_book(msg) -> None:
-    """
-    process_trade_book is a callback function called from the websocket on_kline asynchronous coroutine.
-    This function is called on every kline tick.
-    https://binance-docs.github.io/apidocs/futures/en/#kline-candlestick-streams
-    :param msg: Provided from the websocket kline stream.
-    :type msg: Dictionary
-    :return: None
-    :rtype:
-    """
-    global total_profit
+
     symbol = msg['s']
+
     scale_factor = acme.get_scale(float(msg['c']))
+
     # Iterate over each trade in trade book for the symbol
     for trade in trade_book.get(symbol, []):
         trade["close"] = float(msg['c']) / scale_factor
@@ -48,15 +39,8 @@ async def process_trade_book(msg) -> None:
         else:
             trade["perc"] = ((trade["entry"] - trade["close"]) / trade["entry"]) * 100
 
-        # Check if the trade should be closed
-        if trade["perc"] >= 0.6 or trade["perc"] <= -0.5:
-            # Update the total profit
-            total_profit += trade["perc"]
-            # Remove trade from the trade book
-            trade_book[symbol].remove(trade)
-            # Send a message to indicate the trade has been closed
-            discord.send_text(f"Trade for {symbol} closed with {trade['perc']}% gain."
-                              f" Total profit is now {total_profit}%.")
+        # Exit Function Goes Here
+        await exit_strategies.tp_sl_top_of_minute_exit(trade=trade, book=trade_book, symbol=symbol, tp=0.7, sl=-0.5)
 
 
 async def process_message(msg) -> None:
