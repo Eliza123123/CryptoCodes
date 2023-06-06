@@ -11,6 +11,7 @@ from config import Config
 from lib import acme, discord, exit_strategies
 
 acme.init()
+acme.combine_pnz()
 conf = Config("config.yaml")
 locale.setlocale(locale.LC_MONETARY, 'en_US.UTF-8')
 ws = Binance_websocket()
@@ -47,10 +48,11 @@ async def process_trade_book(msg) -> None:
             ws.unsubscribe([symbol])
 
         # Exit function goes here
-        await exit_strategies.tp_sl_top_of_minute_exhaustion_exit(
-            trade=trade, book=trade_book, symbol=symbol, tp=0.7, sl=-0.5, exhaustion=60)
-
+        await exit_strategies.acme_exit(trade=trade, book=trade_book, symbol=symbol,
+                                        zone_traversals_up=1, zone_traversals_down=1)
         trade_count -= 1
+        # await exit_strategies.tp_sl_top_of_minute_exhaustion_exit(
+        #     trade=trade, book=trade_book, symbol=symbol, tp=0.7, sl=-0.5, exhaustion=60)
 
 
 async def process_message(msg: dict) -> None:
@@ -66,7 +68,7 @@ async def process_message(msg: dict) -> None:
     # If liquidation is above threshold
     elif liq_value > conf.filters["liquidation"]:
 
-        candle_open, candle_close, scaled_open, scaled_close = await get_scaled_price(symbol)
+        candle_open, candle_close, scaled_open, entry_price = await get_scaled_price(symbol)
 
         output_table.append(["Symbol", symbol])
         output_table.append(["Side", "Buyer Liquidated" if msg["S"] == "SELL" else "Seller Liquidated"])
@@ -74,10 +76,10 @@ async def process_message(msg: dict) -> None:
         output_table.append(["Price", msg["p"]])
         output_table.append(["Liquidation Value", locale.currency(liq_value, grouping=True)])
         output_table.append(["Timestamp", datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')])
-        output_table.append(["Scaled Price", scaled_close])
+        output_table.append(["Scaled Price", entry_price])
 
         # If in acme zone
-        pnz = await get_pnz(scaled_open, scaled_close)
+        pnz = await get_pnz(scaled_open, entry_price)
         if pnz:
             zscore_vol = await volume_filter(symbol, conf.zscore_lookback, conf.zscore_timeframes)
             print('-' * 65)
@@ -108,7 +110,7 @@ async def process_message(msg: dict) -> None:
                     "order": len(trade_book.get(symbol, [])) + 1,
                     "symbol": symbol,
                     "side": "SELL" if msg["S"] == "BUY" else "BUY",
-                    "entry": float(scaled_close),
+                    "entry": float(entry_price),
                     "ts": datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
                     "close": 0,
                     "perc": 0
@@ -201,6 +203,7 @@ async def get_scaled_price(symbol: str) -> list:
     }
     data = await fetch_kline(parameters)
     if not data:
+
         return []
     candle_open = float(data[0][1])
     candle_close = float(data[0][4])
@@ -208,7 +211,7 @@ async def get_scaled_price(symbol: str) -> list:
     return [candle_open, candle_close, candle_open / scale_factor, candle_close / scale_factor]
 
 
-async def get_pnz(scaled_open: float, scaled_close: float) -> bool:
+async def get_pnz(scaled_open: float, entry_price: float) -> bool:
     emoji_map = {
         1: "⬜",
         3: "🟨",
@@ -219,13 +222,13 @@ async def get_pnz(scaled_open: float, scaled_close: float) -> bool:
     flag_pnz_sm = False
     seen_tups = set()
     for tup in acme.pnz_sm[1]:
-        if tup not in seen_tups and acme.through_pnz_small([tup], scaled_open, scaled_close):
+        if tup not in seen_tups and acme.through_pnz_small([tup], scaled_open, entry_price):
             seen_tups.add(tup)
             flag_pnz_sm = True
             output_table.append([f"ACME Small {emoji_map.get(1, '')}", tup])
     for key in range(3, 6):
         for tup in acme.pnz_lg[key]:
-            if acme.price_within([tup], scaled_close):
+            if acme.price_within([tup], entry_price):
                 output_table.append([f"ACME Big {key} {emoji_map.get(key, '')} ", tup])
                 return True
     return flag_pnz_sm
