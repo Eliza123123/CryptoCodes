@@ -42,15 +42,15 @@ async def process_trade_book(msg) -> None:
         else:
             trade["perc"] = ((trade["entry"] - trade["close"]) / trade["entry"]) * 100
 
-        # unsubscribe from websocket if symbol has no other trades
-        if symbol not in trade_book:
-            ws.unsubscribe([symbol])
-
         # Exit function goes here
         await exit_strategies.tp_sl_top_of_minute_exhaustion_exit(
             trade=trade, book=trade_book, symbol=symbol, tp=0.7, sl=-0.5, exhaustion=60)
 
         trade_count -= 1
+
+    # unsubscribe from websocket if symbol has no other trades
+    if symbol not in trade_book:
+        ws.unsubscribe([symbol])
 
 
 async def process_message(msg: dict) -> None:
