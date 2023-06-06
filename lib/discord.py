@@ -22,9 +22,12 @@ def send_text(message: str) -> None:
 
 
 def send_exit_message(symbol: str, perc: float, total_profit: float) -> None:
-    message = f"Trade for {symbol} closed with {round(perc, 2)}% gain." \
-              f" Total profit is now {round(total_profit, 2)}%," \
-              f" {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}"
+    message = (
+        f"```Trade for {symbol} closed with {round(perc, 2)}% gain.\n"
+        f"Total profit is now {round(total_profit, 2)}%.\n"
+        f"Timestamp: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"Leverage: {conf.leverage}x```"
+    )
 
     result = requests.post(conf.discord_webhook_3, json={
         "content": message,

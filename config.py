@@ -79,6 +79,9 @@ class Config:
                     self.excluded_symbols = config.get(
                         "excluded_symbols"
                     )
+                    self.leverage = config.get(
+                        "leverage"
+                    )
                 except (AttributeError, yaml.YAMLError) as e:
                     raise AttributeError(CONFIG_ERROR_MSG + f": {e}")
         except EnvironmentError:

@@ -1,31 +1,33 @@
 import asyncio
 import locale
 import statistics
-from datetime import datetime
+from datetime import datetime, timedelta
+
 from tabulate import tabulate
+
 from Exchange.Binance import Websocket as Binance_websocket
 from Exchange.Binance import fetch_kline
 from config import Config
 from lib import acme, discord, exit_strategies
 
-locale.setlocale(locale.LC_MONETARY, 'en_US.UTF-8')
-conf = Config("config.yaml")
-# Initiate Acme
 acme.init()
-# Keep track of when each symbol was last calculated
-cache = {}
-# Store the Z-Score timeframes
-zscore_tables = {}
-# Output formatting for tables
-output_table = []
-output_confirmation = []
-# Keep track of open trades
-trade_book = {}
-# Binance websocket
+conf = Config("config.yaml")
+locale.setlocale(locale.LC_MONETARY, 'en_US.UTF-8')
 ws = Binance_websocket()
+
+cache = {}  # Keep track of when each symbol was last calculated
+last_liq_times = {}  # Dictionary to store the last liquidation times for each symbol
+trade_book = {}  # Keep track of open trades
+zscore_tables = {}  # Store the Z-Score timeframes
+
+output_confirmation = []  # Output formatting for tables
+output_table = []  # Output formatting for tables
+
+trade_count = 0  # Count of total trades
 
 
 async def process_trade_book(msg) -> None:
+    global trade_count
 
     symbol = msg['s']
 
@@ -34,6 +36,7 @@ async def process_trade_book(msg) -> None:
     # Iterate over each trade in trade book for the symbol
     for trade in trade_book.get(symbol, []):
         trade["close"] = float(msg['c']) / scale_factor
+
         if trade["side"] == "BUY":
             trade["perc"] = ((trade["close"] - trade["entry"]) / trade["entry"]) * 100
         else:
@@ -43,26 +46,28 @@ async def process_trade_book(msg) -> None:
         if symbol not in trade_book:
             ws.unsubscribe([symbol])
 
-        # Exit Function Goes Here
-        await exit_strategies.tp_sl_top_of_minute_exit(trade=trade, book=trade_book, symbol=symbol, tp=0.7, sl=-0.5)
+        # Exit function goes here
+        await exit_strategies.tp_sl_top_of_minute_exhaustion_exit(
+            trade=trade, book=trade_book, symbol=symbol, tp=0.7, sl=-0.5, exhaustion=60)
+
+        trade_count -= 1
 
 
-async def process_message(msg) -> None:
-    """
-    process_message is a callback function called from the websocket on_liquidation asynchronous coroutine.
-    :param msg: Provided from the websocket liquidation stream.
-    :type msg: Dictionary
-    :return: None
-    :rtype:
-    """
+async def process_message(msg: dict) -> None:
+    global trade_count
     symbol = msg["s"]
     quantity = float(msg["q"])
     price = float(msg["p"])
     liq_value = round(float(quantity * price), 2)
+
     if symbol in conf.excluded_symbols:
         print(f"Liquidation {symbol} in excluded list.")
+
+    # If liquidation is above threshold
     elif liq_value > conf.filters["liquidation"]:
+
         candle_open, candle_close, scaled_open, scaled_close = await get_scaled_price(symbol)
+
         output_table.append(["Symbol", symbol])
         output_table.append(["Side", "Buyer Liquidated" if msg["S"] == "SELL" else "Seller Liquidated"])
         output_table.append(["Quantity", msg["q"]])
@@ -70,6 +75,8 @@ async def process_message(msg) -> None:
         output_table.append(["Liquidation Value", locale.currency(liq_value, grouping=True)])
         output_table.append(["Timestamp", datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')])
         output_table.append(["Scaled Price", scaled_close])
+
+        # If in acme zone
         pnz = await get_pnz(scaled_open, scaled_close)
         if pnz:
             zscore_vol = await volume_filter(symbol, conf.zscore_lookback, conf.zscore_timeframes)
@@ -85,9 +92,17 @@ async def process_message(msg) -> None:
             table = tabulate(output_table, tablefmt="plain")
             print(table)
             print('-' * 65)
+
+            # If volume criteria hit
             if any(z_score > conf.filters["zscore"] for z_score in zscore_vol.values()):
                 side = "🟥 🟥 🟥 SELL 🟥 🟥 🟥" if msg["S"] == "BUY" else "🟩 🟩 🟩 BUY 🟩 🟩 🟩"
                 output_confirmation.append(f"{side} conditions are met")
+
+                # Check if total trades is 10 or more
+                if trade_count >= 10:
+                    print("Max trades reached, not adding new trade.")
+                    return
+
                 # If no trade exists for the symbol, open trade and subscribe to kline stream for updates
                 trade_data = {
                     "order": len(trade_book.get(symbol, [])) + 1,
@@ -98,14 +113,26 @@ async def process_message(msg) -> None:
                     "close": 0,
                     "perc": 0
                 }
-                if symbol not in trade_book:
-                    trade_book[symbol] = [trade_data]
-                    ws.subscribe([(symbol.lower(), "1m")])
-                else:
-                    trade_book[symbol].append(trade_data)
 
-                if conf.discord_webhook_enabled:
-                    discord.send_to_channel(zs_table, table, side)
+                # Check if it's been more than a minute since the last liquidation for this symbol
+                now = datetime.utcnow()
+                # Default to more than a minute ago
+                last_liq_time = last_liq_times.get(symbol, now - timedelta(minutes=2))
+
+                if now - last_liq_time < timedelta(minutes=1):
+                    print(f"Skipped liquidation for {symbol}, less than a minute since last one.")
+                else:
+                    last_liq_times[symbol] = now
+
+                    if symbol not in trade_book:
+                        trade_book[symbol] = [trade_data]
+                        ws.subscribe([(symbol.lower(), "1m")])
+                    else:
+                        trade_book[symbol].append(trade_data)
+                    trade_count += 1
+
+                    if conf.discord_webhook_enabled:
+                        discord.send_to_channel(zs_table, table, side)
         else:
             output_confirmation.append(f"{symbol} Liquidation: ACME not detected.")
         # 3. Print confirmation messages
