@@ -2,7 +2,7 @@ import asyncio
 import json
 
 from requests import get
-from websockets import exceptions, connect, WebSocketClientProtocol
+from websocket import WebSocket, WebSocketException
 
 
 class Websocket:
@@ -10,7 +10,7 @@ class Websocket:
     Exchange websocket implementation for Binance.
     """
 
-    websocket: WebSocketClientProtocol
+    websocket: WebSocket
     queue: asyncio.Queue
     queue_subscribe: asyncio.Queue
 
@@ -20,6 +20,9 @@ class Websocket:
         self.queue_kline = asyncio.Queue()
         self.queue_subscribe = asyncio.Queue()
         self.stream_subscriptions = {}
+
+    def __del__(self):
+        self.websocket.close()
 
     def subscribe(self, symbols: list) -> None:
         """
@@ -89,9 +92,10 @@ class Websocket:
 
         self.subscribe_liquidation()
 
+        loop = asyncio.get_event_loop()
         while True:
             try:
-                message = await self.websocket.recv()
+                message = await loop.run_in_executor(None, self.websocket.recv)
                 if message is None:
                     break
                 m = json.loads(message)
@@ -107,10 +111,11 @@ class Websocket:
                         print("Kline stream subscribed")
                     elif m["result"] is None and m['id'] == 3:
                         print("Kline stream unsubscribed")
-            except (exceptions.ConnectionClosed, exceptions.ConnectionClosedError) as e:
+            except WebSocketException as e:
                 print(f"Connection closed unexpectedly: {e}. Retrying connection...")
                 await asyncio.sleep(1)
-                self.websocket = await connect(self.wss, ping_interval=10, ping_timeout=25)
+                self.websocket = WebSocket()
+                self.websocket.connect(self.wss)
                 self.subscribe_liquidation()
                 self.subscribe_klines()
                 continue
@@ -118,7 +123,7 @@ class Websocket:
     async def _stream_subscription(self):
         while True:
             message = await self.queue_subscribe.get()
-            await self.websocket.send(json.dumps(message))
+            self.websocket.send(json.dumps(message))
 
     async def on_liquidation(self, fn):
         while True:
@@ -131,7 +136,9 @@ class Websocket:
             await fn(message)
 
     async def stream(self):
-        self.websocket = await connect(self.wss, ping_interval=10, ping_timeout=25)
+        self.websocket = WebSocket()
+        self.websocket.connect(self.wss)
+        print("Connected to websocket")
         await asyncio.gather(self._websocket_stream(), self._stream_subscription())
 
 
