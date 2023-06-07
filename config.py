@@ -49,20 +49,44 @@ class Config:
                     self.discord_webhook = config.get(
                         "discord_webhook"
                     )
-                    self.discord_webhook_2 = config.get(
-                        "discord_webhook_2"
-                    )
                     self.discord_webhook_3 = config.get(
                         "discord_webhook_3"
+                    )
+                    self.discord_webhook_config_1 = config.get(
+                        "discord_webhook_config_1"
+                    )
+                    self.discord_webhook_config_2 = config.get(
+                        "discord_webhook_config_2"
+                    )
+                    self.discord_webhook_config_3 = config.get(
+                        "discord_webhook_config_3"
+                    )
+                    self.discord_webhook_config_4 = config.get(
+                        "discord_webhook_config_4"
+                    )
+                    self.discord_webhook_config_5 = config.get(
+                        "discord_webhook_config_5"
                     )
                     self.discord_webhook_enabled = config.get(
                         "discord_webhook_enabled"
                     )
-                    self.discord_webhook_2_enabled = config.get(
-                        "discord_webhook_2_enabled"
-                    )
                     self.discord_webhook_3_enabled = config.get(
                         "discord_webhook_3_enabled"
+                    )
+                    self.discord_webhook_config_1_enabled = config.get(
+                        "discord_webhook_config_1_enabled"
+                    )
+                    self.discord_webhook_config_2_enabled = config.get(
+                        "discord_webhook_config_2_enabled"
+                    )
+                    self.discord_webhook_config_3_enabled = config.get(
+                        "discord_webhook_config_3_enabled"
+                    )
+                    self.discord_webhook_config_4_enabled = config.get(
+                        "discord_webhook_config_4_enabled"
+                    )
+                    self.discord_webhook_config_5_enabled = config.get(
+                        "discord_webhook_config_5_enabled"
                     )
                     self.trade_book_wait = config.get(
                         "trade_book_wait"

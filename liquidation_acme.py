@@ -18,44 +18,52 @@ ws = Binance_websocket()
 
 cache = {}  # Keep track of when each symbol was last calculated
 last_liq_times = {}  # Dictionary to store the last liquidation times for each symbol
-trade_book = {}  # Keep track of open trades
 zscore_tables = {}  # Store the Z-Score timeframes
 
 output_confirmation = []  # Output formatting for tables
 output_table = []  # Output formatting for tables
 
-trade_count = 0  # Count of total trades
+trade_counts = [{} for _ in range(5)]
+trade_books = [{} for _ in range(5)]
+trade_books_names = [f'trade_book_strategy_{i+1}' for i in range(5)]
 
 
 async def process_trade_book(msg) -> None:
-    global trade_count
+    global trade_counts
+    global trade_books
 
     symbol = msg['s']
 
     scale_factor = acme.get_scale(float(msg['c']))
 
-    # Iterate over each trade in trade book for the symbol
-    for trade in trade_book.get(symbol, []):
-        trade["close"] = float(msg['c']) / scale_factor
+    for strategy in range(5):
+        trade_book = trade_books[strategy]
+        trade_count = trade_counts[strategy]
 
-        if trade["side"] == "BUY":
-            trade["perc"] = ((trade["close"] - trade["entry"]) / trade["entry"]) * 100
-        else:
-            trade["perc"] = ((trade["entry"] - trade["close"]) / trade["entry"]) * 100
+        # Iterate over each trade in trade book for the symbol
+        for trade in trade_book.get(symbol, []):
+            trade["close"] = float(msg['c']) / scale_factor
 
-        # Exit function goes here
-        await exit_strategies.acme_risk_reward_exit(trade=trade, book=trade_book, symbol=symbol)
-        trade_count -= 1
-        # await exit_strategies.tp_sl_top_of_minute_exhaustion_exit(
-        #     trade=trade, book=trade_book, symbol=symbol, tp=0.7, sl=-0.5, exhaustion=60)
+            if trade["side"] == "BUY":
+                trade["perc"] = ((trade["close"] - trade["entry"]) / trade["entry"]) * 100
+            else:
+                trade["perc"] = ((trade["entry"] - trade["close"]) / trade["entry"]) * 100
 
-    # unsubscribe from websocket if symbol has no other trades
-    if symbol not in trade_book:
-        ws.unsubscribe([symbol])
+            # Exit function goes here
+            await exit_strategies.acme_risk_reward_exit(trade=trade, book=trade_book, symbol=symbol)
+            if symbol in trade_count:
+                trade_count[symbol] -= 1
+
+        # unsubscribe from websocket if symbol has no other trades
+        if symbol not in trade_book:
+            ws.unsubscribe([symbol])
+
+        trade_books[strategy] = trade_book
+        trade_counts[strategy] = trade_count
 
 
 async def process_message(msg: dict) -> None:
-    global trade_count
+    global trade_counts
     symbol = msg["s"]
     quantity = float(msg["q"])
     price = float(msg["p"])
@@ -66,6 +74,7 @@ async def process_message(msg: dict) -> None:
 
     # If liquidation is above threshold
     elif liq_value > conf.filters["liquidation"]:
+        print(f"Processing liquidation for {symbol}...")
 
         candle_open, candle_close, scaled_open, entry_price = await get_scaled_price(symbol)
 
@@ -99,16 +108,15 @@ async def process_message(msg: dict) -> None:
                 side = "🟥 🟥 🟥 SELL 🟥 🟥 🟥" if msg["S"] == "BUY" else "🟩 🟩 🟩 BUY 🟩 🟩 🟩"
                 output_confirmation.append(f"{side} conditions are met")
 
-                total_trades = sum(len(trades) for trades in trade_book.values())
+                total_trades = sum(len(book.get(symbol, [])) for book in trade_books)
 
-                # Check if total trades is 10 or more
+                print(f"Total trades for {symbol}: {total_trades}")
                 if total_trades >= 10:
                     print("Max trades reached, not adding new trade.")
                     return
 
-                # If no trade exists for the symbol, open trade and subscribe to kline stream for updates
                 trade_data = {
-                    "order": len(trade_book.get(symbol, [])) + 1,
+                    "order": sum(len(book.get(symbol, [])) for book in trade_books) + 1,
                     "symbol": symbol,
                     "side": "SELL" if msg["S"] == "BUY" else "BUY",
                     "entry": float(entry_price),
@@ -116,10 +124,7 @@ async def process_message(msg: dict) -> None:
                     "close": 0,
                     "perc": 0
                 }
-
-                # Check if it's been more than a minute since the last liquidation for this symbol
                 now = datetime.utcnow()
-                # Default to more than a minute ago
                 last_liq_time = last_liq_times.get(symbol, now - timedelta(minutes=2))
 
                 if now - last_liq_time < timedelta(minutes=1):
@@ -127,13 +132,28 @@ async def process_message(msg: dict) -> None:
                 else:
                     last_liq_times[symbol] = now
 
-                    if symbol not in trade_book:
-                        trade_book[symbol] = [trade_data]
+                    for i in range(len(trade_books)):
+                        trade_book = trade_books[i]
+                        trade_count = trade_counts[i]
+                        if symbol not in trade_book:
+                            print(f"Adding new trade for {symbol} in {trade_books_names[i]}...")
+                            trade_book[symbol] = [trade_data]
+                            if symbol not in trade_count:
+                                trade_count[symbol] = 1
+                            else:
+                                trade_count[symbol] += 1
+                            print(f"New trade added for {symbol}. Trade count: {trade_count[symbol]}")
+                        else:
+                            print(f"Adding new trade for {symbol} in {trade_books_names[i]}...")
+                            trade_book[symbol].append(trade_data)
+                            if symbol not in trade_count:
+                                trade_count[symbol] = 1
+                            else:
+                                trade_count[symbol] += 1
+                            print(f"New trade added for {symbol}. Trade count: {trade_count[symbol]}")
+
+                    if not any(symbol in trade_book for trade_book in trade_books):
                         ws.subscribe([(symbol.lower(), "1m")])
-                        trade_count += 1
-                    else:
-                        trade_book[symbol].append(trade_data)
-                        trade_count += 1
 
                     if conf.discord_webhook_enabled:
                         discord.send_to_channel(zs_table, table, side)
