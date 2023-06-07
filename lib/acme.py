@@ -11,6 +11,13 @@ pnz_sm = {1: []}
 target_lg_list = []
 
 
+def combine_pnz():
+    for key in range(3, 7):  # inclusive of 3 and 6
+        target_lg_list.extend(pnz_lg[key])
+    target_lg_list.extend(pnz_sm[1])
+    target_lg_list.sort(key=lambda tup: tup[0])  # sort by the first element of each tuple
+
+
 def init() -> None:
     # Define constants for calculation.
     frame_values = constant_frame(1.32, 0.787, 1.1, 1.1494, 1.2346, 1.8786,
@@ -58,12 +65,6 @@ def init() -> None:
         gap = frame_values[i] - frame_values[i - 1]
         if gap < average - (1 * deviation):
             pnz_sm[1].append((frame_values[i - 1], frame_values[i]))
-
-
-def combine_pnz():
-    for key in range(3, 7):  # inclusive of 3 and 6
-        target_lg_list.extend(pnz_lg[key])
-    target_lg_list.sort(key=lambda tup: tup[0])  # sort by the first element of each tuple
 
 
 def constant_frame(*consts: float) -> list:

@@ -152,9 +152,6 @@ async def fetch_kline(parameters: dict) -> dict:
     the request sending and response processing into a single function, it simplifies the process of fetching
     data from a web API.
 
-    :param url: A string that represents the URL to which the HTTP GET request will be sent. This should be
-    the endpoint of the web API that you want to interact with.
-
     :param parameters: A dictionary of key-value pairs that will be sent as query parameters in the HTTP GET
     request. These can be used to customize the request based on the API's specifications. For example,
     parameters could be used to specify the data that you want to receive from the API.

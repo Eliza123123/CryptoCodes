@@ -44,8 +44,7 @@ async def process_trade_book(msg) -> None:
             trade["perc"] = ((trade["entry"] - trade["close"]) / trade["entry"]) * 100
 
         # Exit function goes here
-        await exit_strategies.acme_exit(trade=trade, book=trade_book, symbol=symbol,
-                                        zone_traversals_up=1, zone_traversals_down=1)
+        await exit_strategies.acme_risk_reward_exit(trade=trade, book=trade_book, symbol=symbol)
         trade_count -= 1
         # await exit_strategies.tp_sl_top_of_minute_exhaustion_exit(
         #     trade=trade, book=trade_book, symbol=symbol, tp=0.7, sl=-0.5, exhaustion=60)
@@ -100,8 +99,10 @@ async def process_message(msg: dict) -> None:
                 side = "🟥 🟥 🟥 SELL 🟥 🟥 🟥" if msg["S"] == "BUY" else "🟩 🟩 🟩 BUY 🟩 🟩 🟩"
                 output_confirmation.append(f"{side} conditions are met")
 
+                total_trades = sum(len(trades) for trades in trade_book.values())
+
                 # Check if total trades is 10 or more
-                if trade_count >= 10:
+                if total_trades >= 10:
                     print("Max trades reached, not adding new trade.")
                     return
 
@@ -129,9 +130,10 @@ async def process_message(msg: dict) -> None:
                     if symbol not in trade_book:
                         trade_book[symbol] = [trade_data]
                         ws.subscribe([(symbol.lower(), "1m")])
+                        trade_count += 1
                     else:
                         trade_book[symbol].append(trade_data)
-                    trade_count += 1
+                        trade_count += 1
 
                     if conf.discord_webhook_enabled:
                         discord.send_to_channel(zs_table, table, side)
@@ -226,7 +228,7 @@ async def get_pnz(scaled_open: float, entry_price: float) -> bool:
             seen_tups.add(tup)
             flag_pnz_sm = True
             output_table.append([f"ACME Small {emoji_map.get(1, '')}", tup])
-    for key in range(3, 6):
+    for key in range(3, 7):
         for tup in acme.pnz_lg[key]:
             if acme.price_within([tup], entry_price):
                 output_table.append([f"ACME Big {key} {emoji_map.get(key, '')} ", tup])
