@@ -31,34 +31,24 @@ trade_books_names = [f'trade_book_strategy_{i+1}' for i in range(5)]
 async def process_trade_book(msg) -> None:
     global trade_counts
     global trade_books
-    print("Process_trade_book function reached")
-    print(f"Message: {msg}")
-    print(f"Trade Books: {trade_books}")
-    print(f"Trade Counts: {trade_counts}")
 
     for i in range(len(trade_books)):
         trade_book = trade_books[i]
         trade_count = trade_counts[i]
 
         symbol = msg['s']
-        print(f"Symbol: {symbol}")
 
         scale_factor = acme.get_scale(float(msg['c']))
-        print(f"Scale Factor: {scale_factor}")
-
-        print(f"Symbols in trade book: {trade_book.keys()}")
 
         # Iterate over each trade in trade book for the symbol
         for trade in trade_book.get(symbol, []):
             # Set the market price here
             trade["close"] = float(msg['c']) / scale_factor
-            print(f"After updating close: {trade}")
 
             if trade["side"] == "BUY":
                 trade["perc"] = ((trade["close"] - trade["entry"]) / trade["entry"]) * 100
             else:
                 trade["perc"] = ((trade["entry"] - trade["close"]) / trade["entry"]) * 100
-            print(f"After updating perc: {trade}")
 
             # Exit function goes here
             await exit_strategies.acme_risk_reward_exit(trade=trade, book=trade_book, symbol=symbol)
@@ -145,25 +135,21 @@ async def process_message(msg: dict) -> None:
                         trade_count = trade_counts[i]
 
                         if symbol not in trade_book:
-                            print(f"Adding new trade for {symbol} in {trade_books_names[i]}...")
                             trade_book[symbol] = [trade_data]
                             if symbol not in trade_count:
                                 trade_count[symbol] = 1
                             else:
                                 trade_count[symbol] += 1
-                            print(f"New trade added for {symbol}. Trade count: {trade_count[symbol]}")
                         else:
                             # Only add the trade if it doesn't already exist
                             if trade_data not in trade_book[symbol]:
-                                print(f"Adding new trade for {symbol} in {trade_books_names[i]}...")
                                 trade_book[symbol].append(trade_data)
                                 if symbol not in trade_count:
                                     trade_count[symbol] = 1
                                 else:
                                     trade_count[symbol] += 1
-                                print(f"New trade added for {symbol}. Trade count: {trade_count[symbol]}")
 
-                    if not any(symbol in trade_book for trade_book in trade_books):
+                    if any(symbol in trade_book for trade_book in trade_books):
                         ws.subscribe([(symbol.lower(), "1m")])
 
                     if conf.discord_webhook_enabled:

@@ -55,7 +55,6 @@ def send_to_channel(zs_table, table, confirmation) -> None:
 
 
 def send_trade_book(book: dict, discord_webhook) -> None:
-    print("book:", book)
     # Initialize a variable for net open percentage
     net_open_perc = 0
 
