@@ -16,17 +16,14 @@ async def main():
     tasks = [
         ws.stream(),
         ws.on_liquidation(process_message),
-        ws.on_kline(process_trade_book)
+        ws.on_kline(process_trade_book),
+        *[delayed_send_trade_book(book, webhook) for book, webhook in zip(trade_books, discord_webhooks)]
     ]
 
-    # Adding tasks for each trade_book with corresponding webhook
-    for book, discord_webhook in zip(trade_books, discord_webhooks):
-        tasks.append(delayed_send_trade_book(book, discord_webhook))
+    print("Adding on_kline handler")  # This should print right before on_kline is called
 
     await asyncio.gather(*tasks)
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.create_task(main())
-    loop.run_forever()
+    asyncio.run(main())

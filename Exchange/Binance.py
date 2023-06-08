@@ -127,13 +127,19 @@ class Websocket:
 
     async def on_liquidation(self, fn):
         while True:
-            message = await self.queue_liquidation.get()
-            await fn(message)
+            while not self.queue_liquidation.empty():
+                message = await self.queue_liquidation.get()
+                await fn(message)
+            await asyncio.sleep(0.01)  # Small delay to prevent 100% CPU usage
 
     async def on_kline(self, fn):
+        print("Setting up kline handler")  # This will confirm that the method is being called in main.py
         while True:
-            message = await self.queue_kline.get()
-            await fn(message)
+            while not self.queue_kline.empty():
+                message = await self.queue_kline.get()
+                print(f"Received kline msg: {message}")  # This will print every received kline message
+                await fn(message)
+            await asyncio.sleep(0.01)  # Small delay to prevent 100% CPU usage
 
     async def stream(self):
         self.websocket = WebSocket()
