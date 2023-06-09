@@ -106,6 +106,9 @@ class Config:
                     self.excluded_symbols = config.get(
                         "excluded_symbols"
                     )
+                    self.excluded_quote = config.get(
+                        "excluded_quote"
+                    )
                     self.leverage = config.get(
                         "leverage"
                     )
