@@ -2,13 +2,18 @@ from datetime import datetime, timedelta
 
 from lib import discord, trade_time, acme
 
-total_profit = 0
+
+total_profit_strategy_1 = 0
+total_profit_strategy_2 = 0
+total_profit_strategy_3 = 0
+total_profit_strategy_4 = 0
+total_profit_strategy_5 = 0
 
 
-async def acme_risk_reward_exit(trade: dict, book: dict, symbol: str) -> None:
-    global total_profit
-    entry_price = trade['entry']
-    trade_type = trade['side']  # 'buy' or 'sell'
+async def acme_risk_reward_exit(trade_exit: dict, book_exit: dict, symbol_exit: str) -> None:
+    global total_profit_strategy_1
+    entry_price = trade_exit['entry']
+    trade_type = trade_exit['side']  # 'buy' or 'sell'
     entry_zone_index = None
     min_distance = float('inf')
 
@@ -49,10 +54,11 @@ async def acme_risk_reward_exit(trade: dict, book: dict, symbol: str) -> None:
             # print("Final Stop Loss: ", lower_zone[0])
             # print("Final Risk Reward: ", risk_reward)
 
-            if (trade["close"] >= upper_zone[1]) or (trade["close"] <= lower_zone[0]):
-                total_profit += trade["perc"]
-                book[symbol].remove(trade)
-                discord.send_exit_message(symbol, trade['perc'], total_profit)
+            if (trade_exit["close"] >= upper_zone[1]) or (trade_exit["close"] <= lower_zone[0]):
+                total_profit_strategy_1 += trade_exit["perc"]
+                book_exit[symbol_exit].remove(trade_exit)
+                discord.send_exit_message('Strategy 1: acme_risk_reward_exit', symbol_exit, trade_exit['perc'],
+                                          total_profit_strategy_1)
 
         elif trade_type == 'SELL':
             upper_zone_index = min(entry_zone_index + 1, len(acme.target_lg_list) - 1)
@@ -82,15 +88,16 @@ async def acme_risk_reward_exit(trade: dict, book: dict, symbol: str) -> None:
             # print("Final Take Profit: ", lower_zone[0])
             # print("Final Risk Reward: ", risk_reward)
 
-            if (trade["close"] >= upper_zone[1]) or (trade["close"] <= lower_zone[0]):
-                total_profit += trade["perc"]
-                book[symbol].remove(trade)
-                discord.send_exit_message(symbol, trade['perc'], total_profit)
+            if (trade_exit["close"] >= upper_zone[1]) or (trade_exit["close"] <= lower_zone[0]):
+                total_profit_strategy_1 += trade_exit["perc"]
+                book_exit[symbol_exit].remove(trade_exit)
+                discord.send_exit_message('Strategy 1: acme_risk_reward_exit', symbol_exit, trade_exit['perc'],
+                                          total_profit_strategy_1)
 
 
 async def acme_exit(trade: dict, book: dict, symbol: str,
                     zone_traversals_up: int, zone_traversals_down: int) -> None:
-    global total_profit
+    global total_profit_strategy_2
     entry_price = trade['entry']
     entry_zone_index = None
 
@@ -116,37 +123,38 @@ async def acme_exit(trade: dict, book: dict, symbol: str,
     lower_zone = acme.target_lg_list[lower_zone_index]
 
     if (trade["close"] >= upper_zone[1]) or (trade["close"] <= lower_zone[0]):
-        total_profit += trade["perc"]
+        total_profit_strategy_2 += trade["perc"]
         book[symbol].remove(trade)
-        discord.send_exit_message(symbol, trade['perc'], total_profit)
+        discord.send_exit_message("Strategy 2: acme_exit", symbol, trade['perc'], total_profit_strategy_2)
 
 
 async def tp_sl_exit(trade: dict, book: dict, symbol: str, tp: float, sl: float):
-    global total_profit
+    global total_profit_strategy_3
 
     if (trade["perc"] <= sl) or (trade["perc"] >= tp):
-        total_profit += trade["perc"]
+        total_profit_strategy_3 += trade["perc"]
         book[symbol].remove(trade)
-        discord.send_exit_message(symbol, trade['perc'], total_profit)
+        discord.send_exit_message("Strategy 3: tp_sl_exit", symbol, trade['perc'], total_profit_strategy_3)
 
 
 async def tp_sl_top_of_minute_exit(trade: dict, book: dict, symbol: str, tp: float, sl: float):
-    global total_profit
+    global total_profit_strategy_4
 
     if (trade["perc"] <= sl) or (trade["perc"] >= tp and trade_time.is_top_of_minute()):
-        total_profit += trade["perc"]
+        total_profit_strategy_4 += trade["perc"]
         book[symbol].remove(trade)
-        discord.send_exit_message(symbol, trade['perc'], total_profit)
+        discord.send_exit_message("Strategy 4: tp_sl_exit", symbol, trade['perc'], total_profit_strategy_4)
 
 
 async def tp_sl_top_of_minute_exhaustion_exit(
         trade: dict, book: dict, symbol: str, tp: float, sl: float, exhaustion: int):
-    global total_profit
+    global total_profit_strategy_5
 
     time_of_trade = datetime.strptime(trade["ts"], '%Y-%m-%d %H:%M:%S')
     trade_is_old = datetime.utcnow() - time_of_trade > timedelta(minutes=exhaustion)
 
     if (trade["perc"] <= sl) or (trade["perc"] >= tp and trade_time.is_top_of_minute()) or trade_is_old:
-        total_profit += trade["perc"]
+        total_profit_strategy_5 += trade["perc"]
         book[symbol].remove(trade)
-        discord.send_exit_message(symbol, trade['perc'], total_profit)
+        discord.send_exit_message("Strategy 5: tp_sl_top_of_minute_exhaustion_exit", symbol, trade['perc'],
+                                  total_profit_strategy_5)

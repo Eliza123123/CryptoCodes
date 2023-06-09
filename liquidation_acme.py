@@ -25,16 +25,37 @@ output_table = []  # Output formatting for tables
 
 trade_counts = [{} for _ in range(5)]
 trade_books = [{} for _ in range(5)]
-trade_books_names = [f'trade_book_strategy_{i+1}' for i in range(5)]
+
+strategy_order_list = ['acme_risk_reward_exit', 'acme_exit', 'tp_sl_exit',
+                       'tp_sl_top_of_minute_exit', 'tp_sl_top_of_minute_exhaustion_exit']
 
 
 async def process_trade_book(msg) -> None:
     global trade_counts
     global trade_books
 
+    exit_strategy_functions = {
+        'acme_risk_reward_exit':
+            lambda trade_exit, book, symbol_exit:
+            exit_strategies.acme_risk_reward_exit(trade, book, symbol),
+        'acme_exit':
+            lambda trade_exit, book, symbol_exit:
+            exit_strategies.acme_exit(trade, book, symbol, zone_traversals_up=2, zone_traversals_down=1),
+        'tp_sl_exit':
+            lambda trade_exit, book, symbol_exit:
+            exit_strategies.tp_sl_exit(trade, book, symbol, tp=0.6, sl=-0.5),
+        'tp_sl_top_of_minute_exit':
+            lambda trade_exit, book, symbol_exit:
+            exit_strategies.tp_sl_top_of_minute_exit(trade, book, symbol, tp=0.7, sl=-0.5),
+        'tp_sl_top_of_minute_exhaustion_exit':
+            lambda trade_exit, book, symbol_exit:
+            exit_strategies.tp_sl_top_of_minute_exhaustion_exit(trade, book, symbol, tp=0.7, sl=-0.5, exhaustion=60),
+    }
+
     for i in range(len(trade_books)):
         trade_book = trade_books[i]
         trade_count = trade_counts[i]
+        exit_strategy_name = strategy_order_list[i]
 
         symbol = msg['s']
 
@@ -50,8 +71,11 @@ async def process_trade_book(msg) -> None:
             else:
                 trade["perc"] = ((trade["entry"] - trade["close"]) / trade["entry"]) * 100
 
-            # Exit function goes here
-            await exit_strategies.acme_risk_reward_exit(trade=trade, book=trade_book, symbol=symbol)
+            # Call the appropriate exit function
+            exit_strategy_function = exit_strategy_functions.get(exit_strategy_name)
+            if exit_strategy_function is not None:
+                await exit_strategy_function(trade, trade_book, symbol)
+
             if symbol in trade_count:
                 trade_count[symbol] -= 1
 

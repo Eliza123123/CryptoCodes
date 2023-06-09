@@ -21,10 +21,9 @@ async def main():
 
     # Adding tasks for each trade_book with corresponding webhook
     for book, discord_webhook in zip(trade_books, discord_webhooks):
-        tasks.append(delayed_send_trade_book(trade_books, discord_webhook))
+        tasks.append(delayed_send_trade_book(book, discord_webhook))
 
     await asyncio.gather(*tasks)
-
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
