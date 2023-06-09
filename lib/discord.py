@@ -72,29 +72,29 @@ def send_trade_book(book: dict, discord_webhook) -> None:
         for trade in trades:
             net_open_perc += trade['perc']
 
-        net_open_perc_emoji = '🟩🟩🟩' if net_open_perc > 0 else '🟥🟥🟥' if net_open_perc < 0 else '🟧🟧🟧'
+    net_open_perc_emoji = '🟩🟩🟩' if net_open_perc > 0 else '🟥🟥🟥' if net_open_perc < 0 else '🟧🟧🟧'
 
-        lines = [
-            tabulate([[i for i in j.values()] for symbol, trades in book.items() for j in trades],
-                     headers=["Symbol", "Side", "Entry Price", "Entry Timestamp", "Market Price", "Percent Gain"],
-                     tablefmt="simple", floatfmt=".2f"),
-            "-" * 65,
-            f"Open Profit: {round(net_open_perc, 2)}% {net_open_perc_emoji}"
-        ]
+    lines = [
+        tabulate([[i for i in j.values()] for symbol, trades in book.items() for j in trades],
+                 headers=["Symbol", "Side", "Entry Price", "Entry Timestamp", "Market Price", "Percent Gain"],
+                 tablefmt="simple", floatfmt=".2f"),
+        "-" * 65,
+        f"Open Profit: {round(net_open_perc, 2)}% {net_open_perc_emoji}"
+    ]
 
-        message = "\n".join(lines)
+    message = "\n".join(lines)
 
-        # print(message)
+    # print(message)
 
-        result = requests.post(discord_webhook, json={
-            "content": f"\n```\n{message}\n```",
-            "username": "ACME"
-        })
+    result = requests.post(discord_webhook, json={
+        "content": f"\n```\n{message}\n```",
+        "username": "ACME"
+    })
 
-        try:
-            result.raise_for_status()
-        except requests.exceptions.HTTPError as err:
-            print(err)
+    try:
+        result.raise_for_status()
+    except requests.exceptions.HTTPError as err:
+        print(err)
 
 
 async def delayed_send_trade_book(book: dict, discord_webhook: str) -> None:

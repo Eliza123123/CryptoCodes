@@ -8,7 +8,7 @@ from tabulate import tabulate
 from Exchange.Binance import Websocket as Binance_websocket
 from Exchange.Binance import fetch_kline
 from config import Config
-from lib import acme, discord, exit_strategies
+from lib import acme, discord, trade_time
 
 acme.init()
 acme.combine_pnz()
@@ -23,65 +23,21 @@ zscore_tables = {}  # Store the Z-Score timeframes
 output_confirmation = []  # Output formatting for tables
 output_table = []  # Output formatting for tables
 
-trade_counts = [{} for _ in range(5)]
+trade_counts = [0 for _ in range(5)]
 trade_books = [{} for _ in range(5)]
 
 strategy_order_list = ['acme_risk_reward_exit', 'acme_exit', 'tp_sl_exit',
                        'tp_sl_top_of_minute_exit', 'tp_sl_top_of_minute_exhaustion_exit']
 
+total_profit_strategy_1 = 0
+total_profit_strategy_2 = 0
+total_profit_strategy_3 = 0
+total_profit_strategy_4 = 0
+total_profit_strategy_5 = 0
 
-async def process_trade_book(msg) -> None:
-    global trade_counts
-    global trade_books
-
-    exit_strategy_functions = {
-        'acme_risk_reward_exit':
-            lambda trade_exit, book, symbol_exit:
-            exit_strategies.acme_risk_reward_exit(trade, book, symbol),
-        'acme_exit':
-            lambda trade_exit, book, symbol_exit:
-            exit_strategies.acme_exit(trade, book, symbol, zone_traversals_up=2, zone_traversals_down=1),
-        'tp_sl_exit':
-            lambda trade_exit, book, symbol_exit:
-            exit_strategies.tp_sl_exit(trade, book, symbol, tp=0.6, sl=-0.5),
-        'tp_sl_top_of_minute_exit':
-            lambda trade_exit, book, symbol_exit:
-            exit_strategies.tp_sl_top_of_minute_exit(trade, book, symbol, tp=0.7, sl=-0.5),
-        'tp_sl_top_of_minute_exhaustion_exit':
-            lambda trade_exit, book, symbol_exit:
-            exit_strategies.tp_sl_top_of_minute_exhaustion_exit(trade, book, symbol, tp=0.7, sl=-0.5, exhaustion=60),
-    }
-
-    for i in range(len(trade_books)):
-        trade_book = trade_books[i]
-        trade_count = trade_counts[i]
-        exit_strategy_name = strategy_order_list[i]
-
-        symbol = msg['s']
-
-        scale_factor = acme.get_scale(float(msg['c']))
-
-        # Iterate over each trade in trade book for the symbol
-        for trade in trade_book.get(symbol, []):
-            # Set the market price here
-            trade["close"] = float(msg['c']) / scale_factor
-
-            if trade["side"] == "BUY":
-                trade["perc"] = ((trade["close"] - trade["entry"]) / trade["entry"]) * 100
-            else:
-                trade["perc"] = ((trade["entry"] - trade["close"]) / trade["entry"]) * 100
-
-            # Call the appropriate exit function
-            exit_strategy_function = exit_strategy_functions.get(exit_strategy_name)
-            if exit_strategy_function is not None:
-                await exit_strategy_function(trade, trade_book, symbol)
-
-            if symbol in trade_count:
-                trade_count[symbol] -= 1
-
-        # unsubscribe from websocket if symbol has no other trades
-        if symbol not in trade_book:
-            ws.unsubscribe([symbol])
+######################################################################################################################
+# Entry logic from this point on
+# TODO: allow code to process different entry criteria in a similar fashion to how exits have been performed
 
 
 async def process_message(msg: dict) -> None:
@@ -130,13 +86,6 @@ async def process_message(msg: dict) -> None:
                 side = "🟥 🟥 🟥 SELL 🟥 🟥 🟥" if msg["S"] == "BUY" else "🟩 🟩 🟩 BUY 🟩 🟩 🟩"
                 output_confirmation.append(f"{side} conditions are met")
 
-                total_trades = sum(len(book.get(symbol, [])) for book in trade_books)
-
-                print(f"Total trades for {symbol}: {total_trades}")
-                if total_trades >= 10:
-                    print("Max trades reached, not adding new trade.")
-                    return
-
                 trade_data = {
                     "order": sum(len(book.get(symbol, [])) for book in trade_books) + 1,
                     "symbol": symbol,
@@ -157,27 +106,20 @@ async def process_message(msg: dict) -> None:
                     for i in range(len(trade_books)):
                         trade_book = trade_books[i]
                         trade_count = trade_counts[i]
-
-                        if symbol not in trade_book:
+                        if symbol not in trade_book and trade_count < conf.trade_cap:
                             trade_book[symbol] = [trade_data]
-                            if symbol not in trade_count:
-                                trade_count[symbol] = 1
-                            else:
-                                trade_count[symbol] += 1
+                            trade_counts[i] += 1
                         else:
-                            # Only add the trade if it doesn't already exist
-                            if trade_data not in trade_book[symbol]:
+                            if trade_data not in trade_book[symbol] and trade_count < conf.trade_cap:
                                 trade_book[symbol].append(trade_data)
-                                if symbol not in trade_count:
-                                    trade_count[symbol] = 1
-                                else:
-                                    trade_count[symbol] += 1
+                                trade_counts[i] += 1
 
                     if any(symbol in trade_book for trade_book in trade_books):
                         ws.subscribe([(symbol.lower(), "1m")])
 
                     if conf.discord_webhook_enabled:
                         discord.send_to_channel(zs_table, table, side)
+
         else:
             output_confirmation.append(f"{symbol} Liquidation: ACME not detected.")
         # 3. Print confirmation messages
@@ -186,6 +128,255 @@ async def process_message(msg: dict) -> None:
         # Reset tables
         output_table.clear()
         output_confirmation.clear()
+
+        # End of entry logic
+######################################################################################################################
+
+######################################################################################################################
+        # Start of exit logic
+
+
+async def process_trade_book(msg) -> None:
+    global trade_books
+
+    exit_strategy_functions = {
+        'acme_risk_reward_exit':
+            lambda trade_exit, book, symbol_exit:
+            acme_risk_reward_exit(trade, book, symbol),
+        'acme_exit':
+            lambda trade_exit, book, symbol_exit:
+            acme_exit(trade, book, symbol, zone_traversals_up=2, zone_traversals_down=1),
+        'tp_sl_exit':
+            lambda trade_exit, book, symbol_exit:
+            tp_sl_exit(trade, book, symbol, tp=0.6, sl=-0.5),
+        'tp_sl_top_of_minute_exit':
+            lambda trade_exit, book, symbol_exit:
+            tp_sl_top_of_minute_exit(trade, book, symbol, tp=0.7, sl=-0.5),
+        'tp_sl_top_of_minute_exhaustion_exit':
+            lambda trade_exit, book, symbol_exit:
+            tp_sl_top_of_minute_exhaustion_exit(trade, book, symbol, tp=0.7, sl=-0.5, exhaustion=60),
+    }
+
+    for i in range(len(trade_books)):
+        trade_book = trade_books[i]
+        exit_strategy_name = strategy_order_list[i]
+
+        symbol = msg['s']
+
+        scale_factor = acme.get_scale(float(msg['c']))
+
+        # Iterate over each trade in trade book for the symbol
+        for trade in trade_book.get(symbol, []):
+            # Set the market price here
+            trade["close"] = float(msg['c']) / scale_factor
+
+            if trade["side"] == "BUY":
+                trade["perc"] = ((trade["close"] - trade["entry"]) / trade["entry"]) * 100
+            else:
+                trade["perc"] = ((trade["entry"] - trade["close"]) / trade["entry"]) * 100
+
+            # Call the appropriate exit function
+            exit_strategy_function = exit_strategy_functions.get(exit_strategy_name)
+            if exit_strategy_function is not None:
+                await exit_strategy_function(trade, trade_book, symbol)
+
+        # unsubscribe from websocket if symbol has no other trades
+        if symbol not in trade_book:
+            ws.unsubscribe([symbol])
+
+
+async def acme_risk_reward_exit(trade_exit: dict, book_exit: dict, symbol_exit: str) -> None:
+    global total_profit_strategy_1
+
+    entry_price = trade_exit['entry']
+    trade_type = trade_exit['side']  # 'buy' or 'sell'
+    entry_zone_index = None
+    min_distance = float('inf')
+
+    # Calculate the entry_zone_index
+    for i, tup in enumerate(acme.target_lg_list):
+        mid_point = (tup[0] + tup[1]) / 2
+        distance = abs(mid_point - entry_price)
+        if distance < min_distance:
+            min_distance = distance
+            entry_zone_index = i
+
+    if entry_zone_index is not None:
+        if trade_type == 'BUY':
+            upper_zone_index = min(entry_zone_index + 1, len(acme.target_lg_list) - 1)
+            lower_zone_index = max(entry_zone_index - 1, 0)
+
+            upper_zone = acme.target_lg_list[upper_zone_index]
+            lower_zone = acme.target_lg_list[lower_zone_index]
+
+            room_up = abs(upper_zone[1] - entry_price)
+            room_down = abs(entry_price - lower_zone[0])
+
+            risk_reward = room_up / room_down
+            # print("Initial Risk Reward: ", risk_reward)
+
+            while risk_reward < 1:
+                upper_zone_index += 1
+                # prevent index out of range error
+                if upper_zone_index >= len(acme.target_lg_list):
+                    # print("Reached end of zone list, can't move zone up further.")
+                    break
+                upper_zone = acme.target_lg_list[upper_zone_index]
+                room_up = abs(upper_zone[1] - entry_price)
+                risk_reward = room_up / room_down
+            #     print("Adjusted Risk Reward: ", risk_reward)
+            #
+            # print("Final Take Profit: ", upper_zone[1])
+            # print("Final Stop Loss: ", lower_zone[0])
+            # print("Final Risk Reward: ", risk_reward)
+
+            if (trade_exit["close"] >= upper_zone[1]) or (trade_exit["close"] <= lower_zone[0]):
+                total_profit_strategy_1 += trade_exit["perc"]
+                book_exit[symbol_exit].remove(trade_exit)
+                discord.send_exit_message('Strategy 1: acme_risk_reward_exit', symbol_exit, trade_exit['perc'],
+                                          total_profit_strategy_1)
+                # After the exit trade is confirmed, reduce the trade count by 1.
+                if len(trade_counts) > 0:
+                    trade_counts[0] -= 1  # Decrement the count for the first strategy
+                    # Ensure the count doesn't go below 0
+                    if trade_counts[0] < 0:
+                        trade_counts[0] = 0
+
+        elif trade_type == 'SELL':
+            upper_zone_index = min(entry_zone_index + 1, len(acme.target_lg_list) - 1)
+            lower_zone_index = max(entry_zone_index - 1, 0)
+
+            upper_zone = acme.target_lg_list[upper_zone_index]
+            lower_zone = acme.target_lg_list[lower_zone_index]
+
+            room_up = abs(upper_zone[1] - entry_price)
+            room_down = abs(entry_price - lower_zone[0])
+
+            risk_reward = room_down / room_up
+            # print("Initial Risk Reward: ", risk_reward)
+
+            while risk_reward < 1:
+                lower_zone_index -= 1
+                # prevent index out of range error
+                if lower_zone_index < 0:
+                    # print("Reached start of zone list, can't move zone down further.")
+                    break
+                lower_zone = acme.target_lg_list[lower_zone_index]
+                room_down = abs(entry_price - lower_zone[0])
+                risk_reward = room_down / room_up
+            #     print("Adjusted Risk Reward: ", risk_reward)
+            #
+            # print("Final Stop Loss: ", upper_zone[1])
+            # print("Final Take Profit: ", lower_zone[0])
+            # print("Final Risk Reward: ", risk_reward)
+
+            if (trade_exit["close"] >= upper_zone[1]) or (trade_exit["close"] <= lower_zone[0]):
+                total_profit_strategy_1 += trade_exit["perc"]
+                book_exit[symbol_exit].remove(trade_exit)
+                discord.send_exit_message('Strategy 1: acme_risk_reward_exit', symbol_exit, trade_exit['perc'],
+                                          total_profit_strategy_1)
+                # After the exit trade is confirmed, reduce the trade count by 1.
+                if len(trade_counts) > 0:
+                    trade_counts[0] -= 1  # Decrement the count for the first strategy
+                    # Ensure the count doesn't go below 0
+                    if trade_counts[0] < 0:
+                        trade_counts[0] = 0
+
+
+async def acme_exit(trade_exit: dict, book_exit: dict, symbol_exit: str,
+                    zone_traversals_up: int, zone_traversals_down: int) -> None:
+    global total_profit_strategy_2
+
+    entry_price = trade_exit['entry']
+    entry_zone_index = None
+
+    # Iterate over the combined zones list
+    for i, tup in enumerate(acme.target_lg_list):
+        if tup[0] <= entry_price <= tup[1]:
+            entry_zone_index = i
+            break
+
+    if entry_zone_index is None:
+        # Entry price is not within any tuple in the list.
+        # Calculate the mid-points of each tuple.
+        mid_points = [(tup[0] + tup[1]) / 2 for tup in acme.target_lg_list]
+
+        # Find the index of the tuple with the closest mid-point to the entry price.
+        entry_zone_index = min(range(len(mid_points)), key=lambda j: abs(mid_points[j] - entry_price))
+
+    # Calculate upper and lower zones
+    upper_zone_index = min(entry_zone_index + zone_traversals_up, len(acme.target_lg_list) - 1)
+    lower_zone_index = max(entry_zone_index - zone_traversals_down, 0)
+
+    upper_zone = acme.target_lg_list[upper_zone_index]
+    lower_zone = acme.target_lg_list[lower_zone_index]
+
+    if (trade_exit["close"] >= upper_zone[1]) or (trade_exit["close"] <= lower_zone[0]):
+        total_profit_strategy_2 += trade_exit["perc"]
+        book_exit[symbol_exit].remove(trade_exit)
+        discord.send_exit_message("Strategy 2: acme_exit", symbol_exit, trade_exit['perc'],
+                                  total_profit_strategy_2)
+        # After the exit trade is confirmed, reduce the trade count by 1.
+        if len(trade_counts) > 0:
+            trade_counts[1] -= 1
+            # Ensure the count doesn't go below 0
+            if trade_counts[1] < 0:
+                trade_counts[1] = 0
+
+
+async def tp_sl_exit(trade_exit: dict, book_exit: dict, symbol_exit: str, tp: float, sl: float):
+    global total_profit_strategy_3
+
+    if (trade_exit["perc"] <= sl) or (trade_exit["perc"] >= tp):
+        total_profit_strategy_3 += trade_exit["perc"]
+        book_exit[symbol_exit].remove(trade_exit)
+        discord.send_exit_message("Strategy 3: tp_sl_exit", symbol_exit, trade_exit['perc'],
+                                  total_profit_strategy_3)
+        # After the exit trade is confirmed, reduce the trade count by 1.
+        if len(trade_counts) > 0:
+            trade_counts[2] -= 1
+            # Ensure the count doesn't go below 0
+            if trade_counts[2] < 0:
+                trade_counts[2] = 0
+
+
+async def tp_sl_top_of_minute_exit(trade_exit: dict, book_exit: dict, symbol_exit: str, tp: float, sl: float):
+    global total_profit_strategy_4
+
+    if (trade_exit["perc"] <= sl) or (trade_exit["perc"] >= tp and trade_time.is_top_of_minute()):
+        total_profit_strategy_4 += trade_exit["perc"]
+        book_exit[symbol_exit].remove(trade_exit)
+        discord.send_exit_message("Strategy 4: tp_sl_top_of_minute_exit", symbol_exit, trade_exit['perc'],
+                                  total_profit_strategy_4)
+        # After the exit trade is confirmed, reduce the trade count by 1.
+        if len(trade_counts) > 0:
+            trade_counts[3] -= 1
+            # Ensure the count doesn't go below 0
+            if trade_counts[3] < 0:
+                trade_counts[3] = 0
+
+
+async def tp_sl_top_of_minute_exhaustion_exit(
+        trade_exit: dict, book_exit: dict, symbol_exit: str, tp: float, sl: float, exhaustion: int):
+    global total_profit_strategy_5
+
+    time_of_trade = datetime.strptime(trade_exit["ts"], '%Y-%m-%d %H:%M:%S')
+    trade_is_old = datetime.utcnow() - time_of_trade > timedelta(minutes=exhaustion)
+
+    if (trade_exit["perc"] <= sl) or (trade_exit["perc"] >= tp and trade_time.is_top_of_minute()) or trade_is_old:
+        total_profit_strategy_5 += trade_exit["perc"]
+        book_exit[symbol_exit].remove(trade_exit)
+        discord.send_exit_message("Strategy 5: tp_sl_top_of_minute_exhaustion_exit", symbol_exit, trade_exit['perc'],
+                                  total_profit_strategy_5)
+        # After the exit trade is confirmed, reduce the trade count by 1.
+        if len(trade_counts) > 0:
+            trade_counts[4] -= 1
+            # Ensure the count doesn't go below 0
+            if trade_counts[4] < 0:
+                trade_counts[4] = 0
+
+        # End of exit logic
+######################################################################################################################
 
 
 async def volume_filter(symbol: str, n: int, timeframes: list) -> dict:

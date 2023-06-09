@@ -88,6 +88,9 @@ class Config:
                     self.discord_webhook_config_5_enabled = config.get(
                         "discord_webhook_config_5_enabled"
                     )
+                    self.trade_cap = config.get(
+                        "trade_cap"
+                    )
                     self.trade_book_wait = config.get(
                         "trade_book_wait"
                     )
