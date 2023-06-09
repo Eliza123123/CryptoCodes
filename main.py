@@ -9,6 +9,8 @@ discord_webhooks = [
     conf.discord_webhook_config_3,
     conf.discord_webhook_config_4,
     conf.discord_webhook_config_5,
+    conf.discord_webhook_config_6,
+
 ]
 
 

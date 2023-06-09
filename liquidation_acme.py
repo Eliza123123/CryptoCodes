@@ -23,17 +23,21 @@ zscore_tables = {}  # Store the Z-Score timeframes
 output_confirmation = []  # Output formatting for tables
 output_table = []  # Output formatting for tables
 
-trade_counts = [0 for _ in range(5)]
-trade_books = [{} for _ in range(5)]
+trade_counts = [0 for _ in range(6)]
+trade_books = [{} for _ in range(6)]
 
-strategy_order_list = ['acme_risk_reward_exit', 'acme_exit', 'tp_sl_exit',
-                       'tp_sl_top_of_minute_exit', 'tp_sl_top_of_minute_exhaustion_exit']
+strategy_order_list = ['acme_risk_reward_exit',
+                       'acme_exit', 'tp_sl_exit',
+                       'tp_sl_top_of_minute_exit',
+                       'tp_sl_top_of_minute_exhaustion_exit',
+                       'real_strategy_exit']
 
 dummy_strategy_1_profit = 0
 dummy_strategy_2_profit = 0
 dummy_strategy_3_profit = 0
 dummy_strategy_4_profit = 0
 dummy_strategy_5_profit = 0
+real_strategy_profit = 0
 
 ######################################################################################################################
 # Entry logic from this point on
@@ -47,15 +51,15 @@ async def process_message(msg: dict) -> None:
     price = float(msg["p"])
     liq_value = round(float(quantity * price), 2)
 
-    if symbol in conf.excluded_symbols:
-        print(f"Liquidation {symbol} in excluded list.")
-
-    if symbol[-4:] in conf.excluded_quote:
-        print(f"{symbol} not processed. No processing on BUSD symbols.")
+    # if symbol in conf.excluded_symbols:
+    #     print(f"Liquidation {symbol} in excluded list.")
+    #
+    # if symbol[-4:] in conf.excluded_quote:
+    #     print(f"{symbol} not processed. No processing on BUSD symbols.")
 
     # If liquidation is above threshold
-    elif liq_value > conf.filters["liquidation"]:
-        print(f"Processing liquidation for {symbol}...")
+    if liq_value > conf.filters["liquidation"]:
+        # print(f"Processing liquidation for {symbol}...")
 
         candle_open, candle_close, scaled_open, entry_price = await get_scaled_price(symbol)
 
@@ -123,8 +127,8 @@ async def process_message(msg: dict) -> None:
                     if conf.discord_webhook_enabled:
                         discord.send_to_channel(zs_table, table, side)
 
-        else:
-            output_confirmation.append(f"{symbol} Liquidation: ACME not detected.")
+        # else:
+        #     output_confirmation.append(f"{symbol} Liquidation: ACME not detected.")
         # 3. Print confirmation messages
         for confirmation in output_confirmation:
             print(confirmation)
@@ -142,6 +146,13 @@ async def process_message(msg: dict) -> None:
 async def process_trade_book(msg) -> None:
     global trade_books
 
+    best_performing_strat = get_best_strategy()
+    worst_performing_strat = get_worst_strategy()
+
+    if trade_time.fifteen_second_intervals():
+        print('worst: ', worst_performing_strat, datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'))
+        print('best: ', best_performing_strat, datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'))
+
     exit_strategy_functions = {
         'acme_risk_reward_exit':
             lambda trade_exit, book, symbol_exit:
@@ -151,13 +162,16 @@ async def process_trade_book(msg) -> None:
             acme_exit(trade, book, symbol, zone_traversals_up=2, zone_traversals_down=1),
         'tp_sl_exit':
             lambda trade_exit, book, symbol_exit:
-            tp_sl_exit(trade, book, symbol, tp=0.6, sl=-0.5),
+            tp_sl_exit(trade, book, symbol, tp=0.1, sl=-0.1),
         'tp_sl_top_of_minute_exit':
             lambda trade_exit, book, symbol_exit:
             tp_sl_top_of_minute_exit(trade, book, symbol, tp=0.7, sl=-0.5),
         'tp_sl_top_of_minute_exhaustion_exit':
             lambda trade_exit, book, symbol_exit:
             tp_sl_top_of_minute_exhaustion_exit(trade, book, symbol, tp=0.7, sl=-0.5, exhaustion=60),
+        'real_trade_exit':
+            lambda trade_exit, book, symbol_exit:
+            real_trade_exit()
     }
 
     for i in range(len(trade_books)):
@@ -378,8 +392,66 @@ async def tp_sl_top_of_minute_exhaustion_exit(
             if trade_counts[4] < 0:
                 trade_counts[4] = 0
 
-        # End of exit logic
+
+async def real_trade_exit():
+    pass
+
+    # End of exit code
 ######################################################################################################################
+
+
+def get_worst_strategy():
+    global dummy_strategy_1_profit
+    global dummy_strategy_2_profit
+    global dummy_strategy_3_profit
+    global dummy_strategy_4_profit
+    global dummy_strategy_5_profit
+
+    min_profit = min(dummy_strategy_1_profit,
+                     dummy_strategy_2_profit,
+                     dummy_strategy_3_profit,
+                     dummy_strategy_4_profit,
+                     dummy_strategy_5_profit)
+
+    if min_profit == dummy_strategy_1_profit:
+        return 'strategy_1', dummy_strategy_1_profit
+    elif min_profit == dummy_strategy_2_profit:
+        return 'strategy_2', dummy_strategy_2_profit
+    elif min_profit == dummy_strategy_3_profit:
+        return 'strategy_3', dummy_strategy_3_profit
+    elif min_profit == dummy_strategy_4_profit:
+        return 'strategy_4', dummy_strategy_4_profit
+    elif min_profit == dummy_strategy_5_profit:
+        return 'strategy_5', dummy_strategy_5_profit
+    else:
+        return 'Not enough trade performance to calculate yet.'
+
+
+def get_best_strategy():
+    global dummy_strategy_1_profit
+    global dummy_strategy_2_profit
+    global dummy_strategy_3_profit
+    global dummy_strategy_4_profit
+    global dummy_strategy_5_profit
+
+    max_profit = max(dummy_strategy_1_profit,
+                     dummy_strategy_2_profit,
+                     dummy_strategy_3_profit,
+                     dummy_strategy_4_profit,
+                     dummy_strategy_5_profit)
+
+    if max_profit == dummy_strategy_1_profit:
+        return 'strategy_1', dummy_strategy_1_profit
+    elif max_profit == dummy_strategy_2_profit:
+        return 'strategy_2', dummy_strategy_2_profit
+    elif max_profit == dummy_strategy_3_profit:
+        return 'strategy_3', dummy_strategy_3_profit
+    elif max_profit == dummy_strategy_4_profit:
+        return 'strategy_4', dummy_strategy_4_profit
+    elif max_profit == dummy_strategy_5_profit:
+        return 'strategy_5', dummy_strategy_5_profit
+    else:
+        return 'Not enough trade performance to calculate yet.'
 
 
 async def volume_filter(symbol: str, n: int, timeframes: list) -> dict:

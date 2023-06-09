@@ -11,12 +11,14 @@ discord_webhook_config_2_enabled: True
 discord_webhook_config_3_enabled: True
 discord_webhook_config_4_enabled: True
 discord_webhook_config_5_enabled: True
+discord_webhook_config_6_enabled: True
 
 discord_webhook_config_1: 'https://discord.com/api/webhooks/1113921479294324746/jxDojPwSw6Y4xKkLD4KtORWsMI_fLfDqUb9amXmxLxm3MwVcehFXbJpA8SuKk3D1sqKA'
 discord_webhook_config_2: 'https://discord.com/api/webhooks/1116053899921588236/Iyc7rmx7hLX4flfmTrwQ7ZpXCykLztQFaW7-y_zwuvQhzNAdyfuqp6ChId6ukSPNbl8q'
 discord_webhook_config_3: 'https://discord.com/api/webhooks/1116054020960817162/jv889gbXGQ92KoIJ6OQ5-4Ataa9rXgL2O2X-MP7Ws_W5fCnguBPJS0Fnum95d-htp2Uj'
 discord_webhook_config_4: 'https://discord.com/api/webhooks/1116054133347205120/dSEY2TPPrKcP0rx4rwa54Jb9ZagprfF_k6WE31o0LnvxFLb5AWkzkNbIk6iixo4IgAm-'
 discord_webhook_config_5: 'https://discord.com/api/webhooks/1116054348535955558/7ifnJWhoGP37X3SFpsYmytCD9sAUOLAn29aC6Mw7XIpr0M09Lal8b5Oo6Oy4PqFr5Fom'
+discord_webhook_config_6: 'https://discord.com/api/webhooks/1116819705483759676/DbwabgT81Egn87Wjyh-saTj0KfAlPIlHm4Hh98-wV7hOTevZ87zQ4Y0GQF34au11D_Qt'
 
 # trade cap per trade book
 trade_cap: 10
@@ -26,9 +28,9 @@ trade_book_wait: 3
 
 filters:
   # liquidation to exceed
-  liquidation: 4427
+  liquidation: 1
   # Z-Score to exceed
-  zscore: 2
+  zscore: 0.1
 
 # Z-Score timeframes for use in volume analysis
 # Supported values: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h
