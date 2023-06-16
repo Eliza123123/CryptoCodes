@@ -57,7 +57,7 @@ class Websocket:
         self.queue_subscribe.put_nowait({
             "method": "SUBSCRIBE",
             "params": [*self.stream_subscriptions.values()],
-            "id": 1
+            "id": 2
         })
 
     def unsubscribe(self, symbols: list) -> None:
