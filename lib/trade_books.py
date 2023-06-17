@@ -1,9 +1,17 @@
+from tabulate import tabulate
+
+
 class TradeBooks:
-    def __init__(self, num_books):
-        self.books = [{} for _ in range(num_books)]
+    def __init__(self, *strategies):
+        self.books = {}
+        for i in strategies:
+            self.books[i] = {}
 
     def __getitem__(self, index):
         return self.books[index]
+
+    def __setitem__(self, index, data):
+        self.books[index] = data
 
     def __iter__(self):
         return iter(self.books)
@@ -11,21 +19,42 @@ class TradeBooks:
     def __len__(self):
         return len(self.books)
 
-    def get_book(self, index):
-        return self.books[index]
+    def as_dict(self):
+        return self.books.items()
 
-    def update_book(self, index, symbol, trade_data):
-        trade_book = self.books[index]
-        if symbol not in trade_book:
-            trade_book[symbol] = [trade_data]
-        else:
-            if trade_data not in trade_book[symbol]:
-                trade_book[symbol].append(trade_data)
+    def update(self, index, symbol, data):
+        self.books[index][symbol] = data
 
-    def remove_trade(self, index, symbol, trade_data):
-        trade_book = self.books[index]
-        if symbol in trade_book and trade_data in trade_book[symbol]:
-            trade_book[symbol].remove(trade_data)
+    def remove(self, index, symbol):
+        if symbol in self.books[index]:
+            del self.books[index][symbol]
+
+    def symbol_in_book(self, index, symbol) -> bool:
+        return True if symbol in self.books[index] else False
 
     def symbol_in_books(self, symbol):
-        return any(symbol in trade_book for trade_book in self.books)
+        for i in self.books:
+            if symbol in self.books[i]:
+                return True
+        return False
+
+    def total_trades(self) -> int:
+        total: int = 0
+        for i in self.books:
+            total += len(self.books[i])
+        return total
+
+    def update_stats(self, index: str, perc: float):
+        self.books[index]["stats"]["profit"] += perc
+        self.books[index]["stats"]["min"] = min(self.books[index]["stats"]["min"], perc)
+        self.books[index]["stats"]["max"] = min(self.books[index]["stats"]["max"], perc)
+
+    def display_table(self, strategy: str, side: str, perc: float) -> str:
+        return tabulate([
+            ["Strategy", strategy],
+            ["Side", side],
+            ["Profit", perc],
+            ["Min", self.books[strategy]["stats"]["min"]],
+            ["Max", self.books[strategy]["stats"]["max"]],
+            ["Total", self.books[strategy]["stats"]["profit"]],
+        ], tablefmt="plain")

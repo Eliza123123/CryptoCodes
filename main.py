@@ -1,31 +1,15 @@
 import asyncio
 
 from lib.discord import delayed_send_trade_book
-from liquidation_acme import ws, strategy_entries, strategy_exits, dummy_trade_books, conf
-
-discord_webhooks = [
-    conf.discord_webhook_config_1,
-    conf.discord_webhook_config_2,
-    conf.discord_webhook_config_3,
-    conf.discord_webhook_config_4,
-    conf.discord_webhook_config_5,
-    conf.discord_webhook_config_6,
-
-]
+from liquidation_acme import ws, books, strategy_entries, strategy_exits
 
 
 async def main():
-    tasks = [
-        ws.stream(),
-        ws.on_liquidation(strategy_entries),
-        ws.on_kline(strategy_exits)
-    ]
+    await asyncio.gather(ws.stream(),
+                         ws.on_liquidation(strategy_entries),
+                         ws.on_kline(strategy_exits),
+                         delayed_send_trade_book(books))
 
-    # Adding tasks for each trade_book with corresponding webhook
-    for book, discord_webhook in zip(dummy_trade_books, discord_webhooks):
-        tasks.append(delayed_send_trade_book(book, discord_webhook))
-
-    await asyncio.gather(*tasks)
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

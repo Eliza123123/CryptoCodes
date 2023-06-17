@@ -127,17 +127,13 @@ class Websocket:
 
     async def on_liquidation(self, fn):
         while True:
-            while not self.queue_liquidation.empty():
-                message = await self.queue_liquidation.get()
-                await fn(message)
-            await asyncio.sleep(0.01)  # Small delay to prevent 100% CPU usage
+            message = await self.queue_liquidation.get()
+            await fn(message)
 
     async def on_kline(self, fn):
         while True:
-            while not self.queue_kline.empty():
-                message = await self.queue_kline.get()
-                await fn(message)
-            await asyncio.sleep(0.01)  # Small delay to prevent 100% CPU usage
+            message = await self.queue_kline.get()
+            await fn(message)
 
     async def stream(self):
         self.websocket = WebSocket()
