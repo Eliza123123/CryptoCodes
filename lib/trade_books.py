@@ -4,8 +4,14 @@ from tabulate import tabulate
 class TradeBooks:
     def __init__(self, *strategies):
         self.books = {}
+        self.stats = {}
         for i in strategies:
             self.books[i] = {}
+            self.stats[i] = {
+                "profit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+            }
 
     def __getitem__(self, index):
         return self.books[index]
@@ -45,16 +51,17 @@ class TradeBooks:
         return total
 
     def update_stats(self, index: str, perc: float):
-        self.books[index]["stats"]["profit"] += perc
-        self.books[index]["stats"]["min"] = min(self.books[index]["stats"]["min"], perc)
-        self.books[index]["stats"]["max"] = min(self.books[index]["stats"]["max"], perc)
+        self.stats[index]["profit"] += perc
+        self.stats[index]["min"] = min(self.stats[index]["min"], perc)
+        self.stats[index]["max"] = min(self.stats[index]["max"], perc)
 
-    def display_table(self, strategy: str, side: str, perc: float) -> str:
+    def display_table(self, strategy: str, symbol: str, side: str, perc: float) -> str:
         return tabulate([
             ["Strategy", strategy],
+            ["Symbol", symbol],
             ["Side", side],
-            ["Profit", perc],
-            ["Min", self.books[strategy]["stats"]["min"]],
-            ["Max", self.books[strategy]["stats"]["max"]],
-            ["Total", self.books[strategy]["stats"]["profit"]],
+            ["Profit", "{0:.2f}%".format(perc)],
+            ["Min", "{0:.2f}%".format(self.stats[strategy]["min"])],
+            ["Max", "{0:.2f}%".format(self.stats[strategy]["max"])],
+            ["Total", "{0:.2f}%".format(self.stats[strategy]["profit"])],
         ], tablefmt="plain")

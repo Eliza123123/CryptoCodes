@@ -35,14 +35,15 @@ class Websocket:
         """
 
         subs = []
+        print("SUBSCRIBE", symbols)
         for symbol, timeframe in symbols:
-            fmt = f"{symbol}@kline_{timeframe}"
+            fmt = f"{symbol.lower()}@kline_{timeframe}"
             subs.append(fmt)
             self.stream_subscriptions[symbol] = fmt
 
         self.queue_subscribe.put_nowait({
             "method": "SUBSCRIBE",
-            "params": subs,
+            "params": list(set(subs)),
             "id": 2
         })
 
@@ -123,6 +124,7 @@ class Websocket:
     async def _stream_subscription(self):
         while True:
             message = await self.queue_subscribe.get()
+            print("STREAM SUBSCRIBE", json.dumps(message))
             self.websocket.send(json.dumps(message))
 
     async def on_liquidation(self, fn):

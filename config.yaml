@@ -18,7 +18,7 @@ entry_strategy_1:
   webhook: 'https://discord.com/api/webhooks/1113921479294324746/jxDojPwSw6Y4xKkLD4KtORWsMI_fLfDqUb9amXmxLxm3MwVcehFXbJpA8SuKk3D1sqKA'
 entry_strategy_2:
   liquidation: 1
-  zscore: 1.2
+  zscore: 0.1
   webhook: 'https://discord.com/api/webhooks/1116053899921588236/Iyc7rmx7hLX4flfmTrwQ7ZpXCykLztQFaW7-y_zwuvQhzNAdyfuqp6ChId6ukSPNbl8q'
 
 # Z-Score timeframes for use in volume analysis

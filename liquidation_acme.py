@@ -1,7 +1,7 @@
 import asyncio
 import locale
 import statistics
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from Exchange.Binance import Websocket as Binance_websocket
 from Exchange.Binance import fetch_kline
@@ -19,8 +19,6 @@ locale.setlocale(locale.LC_MONETARY, 'en_US.UTF-8')
 
 liq_cache = {}  # Dictionary to store the last liquidation times for each symbol
 zs_cache = {}  # Cache for the Z-Score timestamp and timeframes
-
-output_confirmation = []  # Output formatting for tables
 
 ws = Binance_websocket()
 
@@ -49,33 +47,30 @@ async def strategy_exits(msg) -> None:
             if trade_exits.on_acme(trade['close'], zone_traversals_up=2, zone_traversals_down=1):
                 books.update_stats(strategy, trade["perc"])
 
-                table = books.display_table(strategy, trade["side"], trade["perc"])
+                table = books.display_table(strategy, symbol, trade["side"], trade["perc"])
                 print(table)
 
                 if conf.discord_exit_webhook_enabled:
                     discord.send_exit(table)
 
                 books.remove(strategy, symbol)
-                break
 
         elif strategy == "entry_strategy_2":
-            if trade_exits.on_tp_sl(trade["perc"], tp=0.1, sl=0.1):
+            if trade_exits.on_tp_sl(trade["perc"], tp=0.5, sl=0.5):
                 books.update_stats(strategy, trade["perc"])
 
-                table = books.display_table(strategy, trade["side"], trade["perc"])
+                table = books.display_table(strategy, symbol, trade["side"], trade["perc"])
                 print(table)
 
                 if conf.discord_exit_webhook_enabled:
                     discord.send_exit(table)
 
                 books.remove(strategy, symbol)
-                break
         else:
             continue
-        break
 
     if not books.symbol_in_books(symbol):
-        ws.unsubscribe([symbol.lower()])
+        ws.unsubscribe([symbol])
 
 
 async def strategy_entries(msg: dict) -> None:
@@ -87,11 +82,9 @@ async def strategy_entries(msg: dict) -> None:
     now = datetime.utcnow()
 
     for fn in [entry_strategy_1, entry_strategy_2]:
-        # process liquidation if value > than threshold and liquidation > than one minute
-        if liq_value > conf[fn.__qualname__]["liquidation"] and (now - liq_cache.get(symbol, now - timedelta(minutes=2)) > timedelta(minutes=1)):
+        # process liquidation if value > threshold and symbol not in strategy book
+        if liq_value > conf[fn.__qualname__]["liquidation"] and not books.symbol_in_book(fn.__qualname__, symbol):
             candle_open, candle_close, scaled_open, entry_price = await get_scaled_price(symbol)
-
-            liq_cache[symbol] = now
 
             output_table = EntryTable(symbol, side, quantity, price, liq_value, entry_price)
 
@@ -105,11 +98,11 @@ async def strategy_entries(msg: dict) -> None:
                         "side": "SELL" if side == "BUY" else "BUY",
                         "entry": entry_price,
                         "ts": now.strftime('%Y-%m-%d %H:%M:%S'),
-                        "close": 0.,
-                        "perc": 0.
+                        "close": 0.0,
+                        "perc": 0.0,
                     })
 
-                    ws.subscribe([(symbol.lower(), "1m")])
+                    ws.subscribe([(symbol, "1m")])
 
                     zs_table = ZScoreTable(zscores)
 
@@ -126,15 +119,11 @@ async def strategy_entries(msg: dict) -> None:
 
 
 def entry_strategy_1(symbol: str, side: str, quantity: float, price: float, zscore) -> bool:
-    return any(z_score > conf["entry_strategy_1"]["zscore"] for z_score in zscore.values()) and not books.symbol_in_book("entry_strategy_1",
-                                                                                                                         symbol) and not len(
-        books["entry_strategy_1"]) >= conf.trade_cap
+    return any(z_score > conf["entry_strategy_1"]["zscore"] for z_score in zscore.values()) and not len(books["entry_strategy_1"]) >= conf.trade_cap
 
 
 def entry_strategy_2(symbol, side, quantity, price, zscore) -> bool:
-    return any(z_score > conf["entry_strategy_2"]["zscore"] for z_score in zscore.values()) and not books.symbol_in_book("entry_strategy_2",
-                                                                                                                         symbol) and not len(
-        books["entry_strategy_2"]) >= conf.trade_cap
+    return any(z_score > conf["entry_strategy_2"]["zscore"] for z_score in zscore.values()) and not len(books["entry_strategy_2"]) >= conf.trade_cap
 
 
 async def volume_filter(symbol: str, n: int, timeframes: list) -> dict:
