@@ -35,7 +35,6 @@ class Websocket:
         """
 
         subs = []
-        print("SUBSCRIBE", symbols)
         for symbol, timeframe in symbols:
             fmt = f"{symbol.lower()}@kline_{timeframe}"
             subs.append(fmt)
@@ -124,7 +123,7 @@ class Websocket:
     async def _stream_subscription(self):
         while True:
             message = await self.queue_subscribe.get()
-            print("STREAM SUBSCRIBE", json.dumps(message))
+            print("DEBUG STREAM", json.dumps(message))
             self.websocket.send(json.dumps(message))
 
     async def on_liquidation(self, fn):

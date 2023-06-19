@@ -82,6 +82,7 @@ async def strategy_entries(msg: dict) -> None:
     now = datetime.utcnow()
 
     for fn in [entry_strategy_1, entry_strategy_2]:
+        print(f"DEBUG Processing {fn.__qualname__}")
         # process liquidation if value > threshold and symbol not in strategy book
         if liq_value > conf[fn.__qualname__]["liquidation"] and not books.symbol_in_book(fn.__qualname__, symbol):
             candle_open, candle_close, scaled_open, entry_price = await get_scaled_price(symbol)
@@ -110,7 +111,7 @@ async def strategy_entries(msg: dict) -> None:
                         discord.send_entry(zs_table, output_table, side)
 
                     print(f"{zs_table}\n\n{output_table}\n\n{'SELL' if side == 'BUY' else 'BUY'}\n")
-                    print(f"DEBUG: {books[fn.__qualname__][symbol]}\n")
+                    print(f"DEBUG BOOK: {books[fn.__qualname__][symbol]}\n")
 
                 else:
                     print(f"{fn.__qualname__}: {symbol} not processed")
